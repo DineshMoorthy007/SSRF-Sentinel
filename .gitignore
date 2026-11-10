@@ -1,0 +1,33 @@
+# C++ / CMake build outputs
+**/build/*
+**/CMakeFiles/
+*.obj
+*.exe
+*.ilk
+*.pdb
+*.res
+*.cache
+CMakeCache.txt
+cmake_install.cmake
+
+# Python artifacts
+**/__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.pytest_cache/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+!/SSRF-Target/build/ssrf_target.exe
