@@ -1,12 +1,18 @@
 {
-    "scan_metadata": {
-        "project": "SSRF Sentinel",
+    "scan_overview": {
+        "project_name": "SSRF Sentinel",
         "scanner_version": "2.0",
+        "scan_date_time": "2026-11-22T16:45:48.394671+00:00",
+        "scan_duration_seconds": 13.21,
         "target_url": "http://127.0.0.1:8080",
-        "scan_timestamp": "2026-11-10T03:55:54.831306+00:00",
-        "scan_duration_seconds": 13.03,
-        "report_format": "JSON",
-        "scanner_architecture": "Multi-Engine Evidence-Based DAST"
+        "scan_status": "COMPLETED",
+        "total_endpoints_discovered": 3,
+        "total_parameters_analysed": 1,
+        "total_tests_executed": 12,
+        "positive_findings": 11,
+        "negative_tests": 1,
+        "inconclusive_tests": 0,
+        "failed_tests": 0
     },
     "scan_summary": {
         "total_endpoints": 3,
@@ -18,265 +24,374 @@
         "failed_tests": 0,
         "scan_status": "COMPLETED"
     },
+    "executive_summary": {
+        "summary": "The automated security scan identified Server-Side Request Forgery (SSRF) behaviour in the target application's URL-fetching functionality. The application allowed the server to initiate requests to internal test resources and an independent local callback receiver using user-supplied URLs. These findings demonstrate that an attacker could leverage the server to bypass perimeter network controls and access internal services. All tests were conducted in a controlled local laboratory environment.",
+        "overall_risk_level": "HIGH",
+        "key_findings": [
+            "In-Band SSRF: 3 probe(s) successfully retrieved internal secret data directly into responses.",
+            "Limited-Response SSRF: 5 probe(s) exposed internal state via status codes, custom headers, or filtered messages.",
+            "Blind / Out-of-Band SSRF: Target initiated an outbound HTTP request verified by a local callback listener.",
+            "Time-Based SSRF: Measurable latency differences confirmed the server waited on internal delayed endpoints.",
+            "Boolean-Based SSRF: The server returned distinct responses for true and false internal conditions."
+        ],
+        "assessment_environment": "Controlled local test environment (loopback: 127.0.0.1)"
+    },
     "detection_summary": {
-        "inband_findings": 3,
-        "limited_response_findings": 5,
-        "blind_oob_findings": 1,
-        "time_based_findings": 1,
-        "boolean_based_findings": 1,
+        "techniques": [
+            {
+                "technique_name": "In-Band / Content-Based SSRF",
+                "plain_english_description": "Checks if the application returns internal resource content directly to the user.",
+                "tests_performed": 3,
+                "positive_findings": 3,
+                "status": "VULNERABILITY_DETECTED"
+            },
+            {
+                "technique_name": "Limited-Response SSRF",
+                "plain_english_description": "Checks if partial internal request artifacts (status codes, headers, truncated fragments) leak back to the user.",
+                "tests_performed": 5,
+                "positive_findings": 5,
+                "status": "VULNERABILITY_DETECTED"
+            },
+            {
+                "technique_name": "Blind / Out-of-Band SSRF",
+                "plain_english_description": "Checks if the server initiates external requests without returning the response, verified via an independent callback receiver.",
+                "tests_performed": 1,
+                "positive_findings": 1,
+                "status": "VULNERABILITY_DETECTED"
+            },
+            {
+                "technique_name": "Time-Based SSRF",
+                "plain_english_description": "Checks for measurable differences in server response time caused by delays introduced during internal requests.",
+                "tests_performed": 1,
+                "positive_findings": 1,
+                "status": "VULNERABILITY_DETECTED"
+            },
+            {
+                "technique_name": "Boolean-Based SSRF",
+                "plain_english_description": "Checks if the application produces distinguishable responses when evaluating true versus false internal conditions.",
+                "tests_performed": 1,
+                "positive_findings": 1,
+                "status": "VULNERABILITY_DETECTED"
+            }
+        ],
         "confidence_breakdown": {
             "LAB_CONFIRMED": 8,
             "HIGH": 3,
             "MEDIUM": 0,
             "LOW": 0,
             "INCONCLUSIVE": 0
-        }
+        },
+        "inband_findings": 3,
+        "limited_response_findings": 5,
+        "blind_oob_findings": 1,
+        "time_based_findings": 1,
+        "boolean_based_findings": 1
     },
-    "individual_findings": [
+    "detailed_findings": [
         {
-            "finding_id": "SSRF-VULN-001",
-            "vulnerability_category": "INBAND_SSRF",
+            "finding_id": "SSRF-FINDING-001",
+            "vulnerability_name": "In-Band SSRF - Internal Secret Data Exposure",
             "detection_technique": "In-Band / Content-Based SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "INBAND_SECRET_PROBE",
-            "payload": "http://127.0.0.1:8081/internal/secret",
-            "http_status": 200,
-            "response_time_ms": 8.43,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Mock",
-                "Confirmed internal verification marker: SSRF_SENTINEL_INTERNAL_ACCESS_2026",
-                "Probe 'Internal Secret Access' reflected internal resource content."
-            ],
-            "verification_details": "Exact Cryptographic/Verification Marker Matching",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Instructed the server to fetch the internal secret resource at http://127.0.0.1:8081/internal/secret.",
+            "what_happened": "The server retrieved the internal resource and returned the internal secret data and mock service headers directly to the client.",
+            "why_this_matters": "An external attacker can abuse this parameter to access private internal services, stealing authentication credentials and restricted internal data.",
+            "evidence": {
+                "human_readable_summary": "The application returned content from an internal service through its URL-fetching functionality.",
+                "technical_evidence": [
+                    "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Mock",
+                    "Confirmed internal verification marker: SSRF_SENTINEL_INTERNAL_ACCESS_2026",
+                    "Probe 'Internal Secret Access' reflected internal resource content."
+                ],
+                "verification_method": "Exact Cryptographic/Verification Marker Matching",
+                "http_status_code": 200,
+                "response_time_ms": 23.97
+            },
             "recommended_remediation": "Enforce strict destination allowlists on the server-side HTTP client. Prevent the reflection of internal response bodies to callers. Implement network-level egress filtering blocking private/loopback IP address ranges (RFC 1918 / RFC 5735)."
         },
         {
-            "finding_id": "SSRF-VULN-002",
-            "vulnerability_category": "INBAND_SSRF",
+            "finding_id": "SSRF-FINDING-002",
+            "vulnerability_name": "In-Band SSRF - Administrative Configuration Exposure",
             "detection_technique": "In-Band / Content-Based SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "INBAND_ADMIN_CONFIG",
-            "payload": "http://127.0.0.1:8081/internal/admin/config",
-            "http_status": 200,
-            "response_time_ms": 5.0,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Core",
-                "Disclosed internal header: X-Resource-ID=admin-config-vault",
-                "Confirmed internal verification marker: SSRF_SENTINEL_INBAND_FULL_ACCESS",
-                "Probe 'Internal Admin Core Config' reflected internal resource content."
-            ],
-            "verification_details": "Exact Cryptographic/Verification Marker Matching",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Instructed the server to fetch the internal admin configuration vault at http://127.0.0.1:8081/internal/admin/config.",
+            "what_happened": "The server fetched the administrative configuration and exposed database connection strings and session keys.",
+            "why_this_matters": "Leaking internal administrative credentials allows attackers to pivot to internal databases and gain full administrative control.",
+            "evidence": {
+                "human_readable_summary": "The response revealed sensitive internal database URIs, admin session keys, and network topology metadata.",
+                "technical_evidence": [
+                    "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Core",
+                    "Disclosed internal header: X-Resource-ID=admin-config-vault",
+                    "Confirmed internal verification marker: SSRF_SENTINEL_INBAND_FULL_ACCESS",
+                    "Probe 'Internal Admin Core Config' reflected internal resource content."
+                ],
+                "verification_method": "Exact Cryptographic/Verification Marker Matching",
+                "http_status_code": 200,
+                "response_time_ms": 4.7
+            },
             "recommended_remediation": "Enforce strict destination allowlists on the server-side HTTP client. Prevent the reflection of internal response bodies to callers. Implement network-level egress filtering blocking private/loopback IP address ranges (RFC 1918 / RFC 5735)."
         },
         {
-            "finding_id": "SSRF-VULN-003",
-            "vulnerability_category": "INBAND_SSRF",
+            "finding_id": "SSRF-FINDING-003",
+            "vulnerability_name": "In-Band SSRF - Internal Service Metadata Exposure",
             "detection_technique": "In-Band / Content-Based SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "INBAND_STATUS_PROBE",
-            "payload": "http://127.0.0.1:8081/internal/status",
-            "http_status": 200,
-            "response_time_ms": 4.6,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "Confirmed internal verification marker: Internal Test Service",
-                "Probe 'Internal Status Service' reflected internal resource content."
-            ],
-            "verification_details": "Exact Cryptographic/Verification Marker Matching",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Instructed the server to fetch the internal health status service at http://127.0.0.1:8081/internal/status.",
+            "what_happened": "The server fetched and returned internal service environment metadata.",
+            "why_this_matters": "Disclosing internal network details helps attackers map internal network architecture and identify internal service names.",
+            "evidence": {
+                "human_readable_summary": "The application returned the internal service heartbeat and environment classification.",
+                "technical_evidence": [
+                    "Confirmed internal verification marker: Internal Test Service",
+                    "Probe 'Internal Status Service' reflected internal resource content."
+                ],
+                "verification_method": "Exact Cryptographic/Verification Marker Matching",
+                "http_status_code": 200,
+                "response_time_ms": 5.09
+            },
             "recommended_remediation": "Enforce strict destination allowlists on the server-side HTTP client. Prevent the reflection of internal response bodies to callers. Implement network-level egress filtering blocking private/loopback IP address ranges (RFC 1918 / RFC 5735)."
         },
         {
-            "finding_id": "SSRF-VULN-004",
-            "vulnerability_category": "LIMITED_RESPONSE_SSRF",
+            "finding_id": "SSRF-FINDING-004",
+            "vulnerability_name": "Limited-Response SSRF - Status-Only Downstream Leakage",
             "detection_technique": "Limited-Response SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "LIMITED_STATUS_ONLY",
-            "payload": "http://127.0.0.1:8081/internal/limited/status-only",
-            "http_status": 204,
-            "response_time_ms": 14.91,
-            "confidence": "HIGH",
-            "evidence": [
-                "Target returned HTTP 204 No Content confirming internal request execution."
-            ],
-            "verification_details": "Status-Only HTTP 204 Inspection",
+            "test_result": "Detected",
+            "confidence_level": "HIGH",
+            "what_was_tested": "Instructed the server to fetch an internal endpoint that returns an HTTP 204 No Content status code.",
+            "what_happened": "The public application forwarded the HTTP 204 status with an empty body, confirming the internal request succeeded.",
+            "why_this_matters": "Even without seeing the response body, receiving distinct HTTP status codes allows an attacker to port scan and map internal services.",
+            "evidence": {
+                "human_readable_summary": "The server returned HTTP 204 No Content, confirming the internal request was executed successfully.",
+                "technical_evidence": [
+                    "Target returned HTTP 204 No Content confirming internal request execution."
+                ],
+                "verification_method": "Status-Only HTTP 204 Inspection",
+                "http_status_code": 204,
+                "response_time_ms": 42.12
+            },
             "recommended_remediation": "Suppress downstream HTTP status codes, headers, and error fragments. Return standardized generic responses regardless of internal request outcome. Enforce egress filtering on server-side request forwarders."
         },
         {
-            "finding_id": "SSRF-VULN-005",
-            "vulnerability_category": "LIMITED_RESPONSE_SSRF",
+            "finding_id": "SSRF-FINDING-005",
+            "vulnerability_name": "Limited-Response SSRF - Header-Only Information Leakage",
             "detection_technique": "Limited-Response SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "LIMITED_HEADER_ONLY",
-            "payload": "http://127.0.0.1:8081/internal/limited/header-only",
-            "http_status": 200,
-            "response_time_ms": 19.48,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "Internal header marker 'SSRF_HEADER_ONLY_FLAG' discovered in response headers."
-            ],
-            "verification_details": "Header Marker Inspection",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Instructed the server to fetch an internal endpoint configured to return custom metadata headers without a response body.",
+            "what_happened": "The public application forwarded internal response headers (X-Internal-Marker) while omitting the body.",
+            "why_this_matters": "Internal headers can leak backend server software, routing paths, internal hostnames, and application state.",
+            "evidence": {
+                "human_readable_summary": "Internal headers were leaked into the public response while the response body was empty.",
+                "technical_evidence": [
+                    "Internal header marker 'SSRF_HEADER_ONLY_FLAG' discovered in response headers."
+                ],
+                "verification_method": "Header Marker Inspection",
+                "http_status_code": 200,
+                "response_time_ms": 4.67
+            },
             "recommended_remediation": "Suppress downstream HTTP status codes, headers, and error fragments. Return standardized generic responses regardless of internal request outcome. Enforce egress filtering on server-side request forwarders."
         },
         {
-            "finding_id": "SSRF-VULN-006",
-            "vulnerability_category": "LIMITED_RESPONSE_SSRF",
+            "finding_id": "SSRF-FINDING-006",
+            "vulnerability_name": "Limited-Response SSRF - Truncated Response Body Disclosure",
             "detection_technique": "Limited-Response SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "LIMITED_TRUNCATED",
-            "payload": "http://127.0.0.1:8081/internal/limited/truncated",
-            "http_status": 200,
-            "response_time_ms": 4.9,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "Disclosed partial/truncated internal secret fragment in response stream."
-            ],
-            "verification_details": "Truncated Buffer Fragment Recognition",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Instructed the server to fetch an internal endpoint that returns a partially truncated response body.",
+            "what_happened": "The server returned a truncated fragment of internal data, indicating response length restriction or buffer clipping.",
+            "why_this_matters": "Partial internal disclosures can still leak sensitive token fragments, session identifiers, and internal memory contents.",
+            "evidence": {
+                "human_readable_summary": "The server returned a partial fragment of internal data, showing response truncation occurred.",
+                "technical_evidence": [
+                    "Disclosed partial/truncated internal secret fragment in response stream."
+                ],
+                "verification_method": "Truncated Buffer Fragment Recognition",
+                "http_status_code": 200,
+                "response_time_ms": 30.35
+            },
             "recommended_remediation": "Suppress downstream HTTP status codes, headers, and error fragments. Return standardized generic responses regardless of internal request outcome. Enforce egress filtering on server-side request forwarders."
         },
         {
-            "finding_id": "SSRF-VULN-007",
-            "vulnerability_category": "LIMITED_RESPONSE_SSRF",
+            "finding_id": "SSRF-FINDING-007",
+            "vulnerability_name": "Limited-Response SSRF - Generic Execution Confirmation",
             "detection_technique": "Limited-Response SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "LIMITED_GENERIC",
-            "payload": "http://127.0.0.1:8081/internal/limited/generic",
-            "http_status": 200,
-            "response_time_ms": 18.08,
-            "confidence": "HIGH",
-            "evidence": [
-                "Application returned generic internal success confirmation."
-            ],
-            "verification_details": "Generic Execution Confirmation",
+            "test_result": "Detected",
+            "confidence_level": "HIGH",
+            "what_was_tested": "Instructed the server to fetch an internal endpoint that responds with a generic success message.",
+            "what_happened": "The server returned a generic success message distinct from the baseline 403 error response.",
+            "why_this_matters": "Confirmation of internal request execution allows attackers to verify the existence of hidden internal endpoints.",
+            "evidence": {
+                "human_readable_summary": "The application returned a generic internal success message confirming that the internal endpoint executed.",
+                "technical_evidence": [
+                    "Application returned generic internal success confirmation."
+                ],
+                "verification_method": "Generic Execution Confirmation",
+                "http_status_code": 200,
+                "response_time_ms": 25.78
+            },
             "recommended_remediation": "Suppress downstream HTTP status codes, headers, and error fragments. Return standardized generic responses regardless of internal request outcome. Enforce egress filtering on server-side request forwarders."
         },
         {
-            "finding_id": "SSRF-VULN-008",
-            "vulnerability_category": "LIMITED_RESPONSE_SSRF",
+            "finding_id": "SSRF-FINDING-008",
+            "vulnerability_name": "Limited-Response SSRF - Policy-Suppressed Content Indicator",
             "detection_technique": "Limited-Response SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "LIMITED_SUPPRESSED",
-            "payload": "http://127.0.0.1:8081/internal/limited/suppressed",
-            "http_status": 200,
-            "response_time_ms": 5.1,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "Internal policy filter suppression marker '[CONTENT_SUPPRESSED_BY_POLICY]' verified."
-            ],
-            "verification_details": "Sanitization Marker Verification",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Instructed the server to fetch an internal endpoint where content was filtered by a simulated policy filter.",
+            "what_happened": "The server returned a response containing an active policy suppression indicator ([CONTENT_SUPPRESSED_BY_POLICY]).",
+            "why_this_matters": "Policy filtering indicators confirm that internal requests reached the backend and that protective filters are applied downstream.",
+            "evidence": {
+                "human_readable_summary": "The response contained an explicit content suppression marker, confirming internal resource retrieval was intercepted.",
+                "technical_evidence": [
+                    "Internal policy filter suppression marker '[CONTENT_SUPPRESSED_BY_POLICY]' verified."
+                ],
+                "verification_method": "Sanitization Marker Verification",
+                "http_status_code": 200,
+                "response_time_ms": 34.76
+            },
             "recommended_remediation": "Suppress downstream HTTP status codes, headers, and error fragments. Return standardized generic responses regardless of internal request outcome. Enforce egress filtering on server-side request forwarders."
         },
         {
-            "finding_id": "SSRF-VULN-009",
-            "vulnerability_category": "BLIND_OOB_SSRF",
+            "finding_id": "SSRF-FINDING-009",
+            "vulnerability_name": "Blind Out-of-Band (OOB) SSRF - External Request Trigger",
             "detection_technique": "Blind / Out-of-Band SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "PROBE_9",
-            "payload": "http://127.0.0.1:8090/callback?token=ssrf_tok_8a5354efdd93a044",
-            "http_status": 200,
-            "response_time_ms": 16.65,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_8a5354efdd93a044' from IP 127.0.0.1 at 2026-11-10T03:55:45.329Z (Poll time: 0.004s)."
-            ],
-            "verification_details": "Out-of-Band Callback Correlation",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Instructed the server to send a request to a dedicated local callback listener carrying tracking token 'ssrf_tok_30c569d4514caa31'.",
+            "what_happened": "The application initiated an outbound request to the callback listener on port 8090, which logged the matching token.",
+            "why_this_matters": "When response content is hidden from the user, blind SSRF can still be used to trigger remote actions or attack other internal network services.",
+            "evidence": {
+                "human_readable_summary": "An independent callback receiver on port 8090 captured an incoming request with the matching test token 'ssrf_tok_30c569d4514caa31'.",
+                "technical_evidence": [
+                    "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_30c569d4514caa31' from IP 127.0.0.1 at 2026-11-22T16:45:38.839Z (Poll time: 0.001s)."
+                ],
+                "verification_method": "Out-of-Band Callback Correlation",
+                "http_status_code": 200,
+                "response_time_ms": 9.75
+            },
             "recommended_remediation": "Isolate backend request forwarders within a restricted network zone with default-deny egress rules. Enforce proxy authentication and block unauthorized outbound TCP/UDP traffic."
         },
         {
-            "finding_id": "SSRF-VULN-010",
-            "vulnerability_category": "TIME_BASED_SSRF",
+            "finding_id": "SSRF-FINDING-010",
+            "vulnerability_name": "Time-Based SSRF - Differential Response Latency",
             "detection_technique": "Time-Based SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "PROBE_10",
-            "payload": "http://127.0.0.1:8081/internal/delayed?ms=2000",
-            "http_status": 200,
-            "response_time_ms": 2030.55,
-            "confidence": "HIGH",
-            "evidence": [
-                "Fast probe median: 0.008s [0.00784069998189807, 0.004805200034752488, 0.0079564000479877] | Delayed probe median: 2.011s [2.011394000146538, 2.0107587999664247, 2.031865800032392] | Delta: 2.004s (Threshold: 1.200s)",
-                "Confirmed internal delayed execution marker 'SSRF_TIME_DELAYED_SUCCESS' in delayed response."
-            ],
-            "verification_details": "Multi-Sample Differential Timing Analysis",
+            "test_result": "Detected",
+            "confidence_level": "HIGH",
+            "what_was_tested": "Measured and compared server response times between an immediate baseline request and a 2-second delayed internal request.",
+            "what_happened": "The server took measurably longer to respond (delay delta: ~2.02s), directly reflecting the internal endpoint's delay.",
+            "why_this_matters": "Response time differences allow attackers to infer internal network state, scan for live internal hosts, and extract data bit-by-bit.",
+            "evidence": {
+                "human_readable_summary": "The server exhibited a consistent, measurable delay (delta: 2.02s) when accessing the delayed internal resource.",
+                "technical_evidence": [
+                    "Fast probe median: 0.019s [0.019497200031764805, 0.005769799987319857, 0.025728900043759495] | Delayed probe median: 2.040s [2.054218400036916, 2.014014100015629, 2.0396995000191964] | Delta: 2.020s (Threshold: 1.200s)",
+                    "Confirmed internal delayed execution marker 'SSRF_TIME_DELAYED_SUCCESS' in delayed response."
+                ],
+                "verification_method": "Multi-Sample Differential Timing Analysis",
+                "http_status_code": 200,
+                "response_time_ms": 2037.8
+            },
             "recommended_remediation": "Enforce aggressive socket connect and read timeouts (<= 2s) on internal HTTP requests. Decouple backend request execution from client HTTP lifecycles using asynchronous background workers."
         },
         {
-            "finding_id": "SSRF-VULN-011",
-            "vulnerability_category": "BOOLEAN_BASED_SSRF",
+            "finding_id": "SSRF-FINDING-011",
+            "vulnerability_name": "Boolean-Based SSRF - Differential Conditional Evaluation",
             "detection_technique": "Boolean-Based SSRF",
-            "endpoint": "/fetch",
-            "parameter": "url",
+            "affected_endpoint": "/fetch",
+            "affected_parameter": "url",
             "http_method": "GET",
-            "test_identifier": "PROBE_11",
-            "payload": "http://127.0.0.1:8081/internal/check?condition=true",
-            "http_status": 200,
-            "response_time_ms": 28.54,
-            "confidence": "LAB_CONFIRMED",
-            "evidence": [
-                "TRUE: HTTP 200 (303 bytes) | FALSE: HTTP 404 (88 bytes) | Length Delta: 215 bytes",
-                "Boolean verification marker 'SSRF_BOOLEAN_TRUE_VERIFIED' matched with divergent status (200 vs 404)."
-            ],
-            "verification_details": "Cryptographic Boolean Marker & Status Inference",
+            "test_result": "Detected",
+            "confidence_level": "LAB_CONFIRMED",
+            "what_was_tested": "Evaluated differences in server response when requesting internal TRUE versus FALSE conditional endpoints.",
+            "what_happened": "The server returned distinct HTTP status codes (200 vs 404) and different content lengths between TRUE and FALSE conditions.",
+            "why_this_matters": "Conditional differences allow an attacker to perform Boolean-based blind data exfiltration by asking true/false queries.",
+            "evidence": {
+                "human_readable_summary": "The application returned clearly distinguishable responses (different status codes and byte lengths) based on internal condition evaluation.",
+                "technical_evidence": [
+                    "TRUE: HTTP 200 (303 bytes) | FALSE: HTTP 404 (88 bytes) | Length Delta: 215 bytes",
+                    "Boolean verification marker 'SSRF_BOOLEAN_TRUE_VERIFIED' matched with divergent status (200 vs 404)."
+                ],
+                "verification_method": "Cryptographic Boolean Marker & Status Inference",
+                "http_status_code": 200,
+                "response_time_ms": 5.45
+            },
             "recommended_remediation": "Normalize server-side application responses so conditional downstream queries do not produce measurable divergences in HTTP status codes, content lengths, or structural evaluation headers."
         }
     ],
-    "discovered_endpoints": [
+    "confidence_scale_reference": {
+        "LAB_CONFIRMED": "The expected verification evidence was successfully observed in the controlled test environment.",
+        "HIGH": "Strong evidence of SSRF-related behaviour was observed.",
+        "MEDIUM": "Some evidence was observed, but additional verification is required.",
+        "LOW": "Weak evidence that may be caused by other application behaviour.",
+        "INCONCLUSIVE": "The test did not provide enough information for a reliable conclusion."
+    },
+    "technical_concepts_glossary": {
+        "In-Band SSRF": "The application returns the internal resource's content directly in its response to the user.",
+        "Limited-Response SSRF": "Detection when only partial information about an internal request (such as a status code, header, or error message) is returned.",
+        "Blind / Out-of-Band SSRF": "The application makes an internal request without showing its response, detected using an independent callback receiver.",
+        "Time-Based SSRF": "Detection using measurable differences in server response time caused by internal delays.",
+        "Boolean-Based SSRF": "Detection by comparing server responses to true and false conditions."
+    },
+    "recommendations": [
         {
-            "path": "/fetch",
-            "status": 400,
-            "method": "GET",
-            "parameters": [
-                "url"
-            ],
-            "source": "html_form"
-        },
-        {
-            "path": "/",
-            "status": 200,
-            "method": "GET",
-            "parameters": [],
-            "source": "crawl"
-        },
-        {
-            "path": "/health",
-            "status": 200,
-            "method": "GET",
-            "parameters": [],
-            "source": "crawl"
-        }
-    ],
-    "analyzed_parameters": [
-        {
-            "endpoint": "/fetch",
-            "method": "GET",
-            "parameter": "url",
-            "category": "URL_INPUT",
             "priority": "HIGH",
-            "source": "html_form",
-            "ssrf_candidate": true
+            "title": "Implement Strict Destination Allowlisting",
+            "description": "Restrict the URL-fetching functionality to an explicit allowlist of authorized external domains and IP addresses. Explicitly reject requests to loopback addresses (127.0.0.0/8), private network ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), and cloud metadata endpoints (169.254.169.254)."
+        },
+        {
+            "priority": "HIGH",
+            "title": "Enforce Network-Level Egress Filtering",
+            "description": "Configure host firewall and network routing rules so that the application server cannot initiate outbound connections to internal microservices, databases, or unauthorized local ports. Use a dedicated egress proxy for necessary outbound web requests."
+        },
+        {
+            "priority": "MEDIUM",
+            "title": "Suppress Downstream Response Details",
+            "description": "Do not relay raw response bodies, headers, or internal error messages back to clients. Always return generic, standardized status responses regardless of internal request outcomes to eliminate limited-response leakage."
+        },
+        {
+            "priority": "MEDIUM",
+            "title": "Set Strict Request Timeouts",
+            "description": "Enforce short, bounded socket connection and read timeouts (e.g. <= 2 seconds) on outgoing requests. This prevents time-based inference attacks and shields the server against request starvation denial-of-service."
+        },
+        {
+            "priority": "LOW",
+            "title": "Normalize Conditional Responses",
+            "description": "Ensure that application responses have uniform HTTP status codes, headers, and body lengths regardless of whether a downstream condition is true or false, eliminating Boolean-based side-channel probing."
         }
     ],
-    "test_execution_details": [
+    "test_execution_records": [
         {
             "test_index": 1,
             "technique": "In-Band / Content-Based SSRF",
@@ -285,7 +400,7 @@
             "payload": "http://127.0.0.1:8081/internal/secret",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 8.43,
+            "response_time_ms": 23.97,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
                 "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Mock",
@@ -300,7 +415,7 @@
             "payload": "http://127.0.0.1:8081/internal/admin/config",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 5.0,
+            "response_time_ms": 4.7,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
                 "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Core",
@@ -315,7 +430,7 @@
             "payload": "http://127.0.0.1:8081/internal/status",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 4.6,
+            "response_time_ms": 5.09,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
                 "Confirmed internal verification marker: Internal Test Service",
@@ -330,7 +445,7 @@
             "payload": "http://127.0.0.1:8081/internal/limited/status-only",
             "outcome": "POSITIVE",
             "status_code": 204,
-            "response_time_ms": 14.91,
+            "response_time_ms": 42.12,
             "confidence": "HIGH",
             "summary_evidence": [
                 "Target returned HTTP 204 No Content confirming internal request execution."
@@ -344,7 +459,7 @@
             "payload": "http://127.0.0.1:8081/internal/limited/header-only",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 19.48,
+            "response_time_ms": 4.67,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
                 "Internal header marker 'SSRF_HEADER_ONLY_FLAG' discovered in response headers."
@@ -358,7 +473,7 @@
             "payload": "http://127.0.0.1:8081/internal/limited/truncated",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 4.9,
+            "response_time_ms": 30.35,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
                 "Disclosed partial/truncated internal secret fragment in response stream."
@@ -372,7 +487,7 @@
             "payload": "http://127.0.0.1:8081/internal/limited/generic",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 18.08,
+            "response_time_ms": 25.78,
             "confidence": "HIGH",
             "summary_evidence": [
                 "Application returned generic internal success confirmation."
@@ -386,7 +501,7 @@
             "payload": "http://127.0.0.1:8081/internal/limited/suppressed",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 5.1,
+            "response_time_ms": 34.76,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
                 "Internal policy filter suppression marker '[CONTENT_SUPPRESSED_BY_POLICY]' verified."
@@ -397,13 +512,13 @@
             "technique": "Blind / Out-of-Band SSRF",
             "endpoint": "/fetch",
             "parameter": "url",
-            "payload": "http://127.0.0.1:8090/callback?token=ssrf_tok_8a5354efdd93a044",
+            "payload": "http://127.0.0.1:8090/callback?token=ssrf_tok_30c569d4514caa31",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 16.65,
+            "response_time_ms": 9.75,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
-                "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_8a5354efdd93a044' from IP 127.0.0.1 at 2026-11-10T03:55:45.329Z (Poll time: 0.004s)."
+                "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_30c569d4514caa31' from IP 127.0.0.1 at 2026-11-22T16:45:38.839Z (Poll time: 0.001s)."
             ]
         },
         {
@@ -414,10 +529,10 @@
             "payload": "http://127.0.0.1:8081/internal/delayed?ms=2000",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 2030.55,
+            "response_time_ms": 2037.8,
             "confidence": "HIGH",
             "summary_evidence": [
-                "Fast probe median: 0.008s [0.00784069998189807, 0.004805200034752488, 0.0079564000479877] | Delayed probe median: 2.011s [2.011394000146538, 2.0107587999664247, 2.031865800032392] | Delta: 2.004s (Threshold: 1.200s)",
+                "Fast probe median: 0.019s [0.019497200031764805, 0.005769799987319857, 0.025728900043759495] | Delayed probe median: 2.040s [2.054218400036916, 2.014014100015629, 2.0396995000191964] | Delta: 2.020s (Threshold: 1.200s)",
                 "Confirmed internal delayed execution marker 'SSRF_TIME_DELAYED_SUCCESS' in delayed response."
             ]
         },
@@ -429,7 +544,7 @@
             "payload": "http://127.0.0.1:8081/internal/check?condition=true",
             "outcome": "POSITIVE",
             "status_code": 200,
-            "response_time_ms": 28.54,
+            "response_time_ms": 5.45,
             "confidence": "LAB_CONFIRMED",
             "summary_evidence": [
                 "TRUE: HTTP 200 (303 bytes) | FALSE: HTTP 404 (88 bytes) | Length Delta: 215 bytes",
@@ -444,11 +559,49 @@
             "payload": "http://127.0.0.1:8080/health",
             "outcome": "NEGATIVE",
             "status_code": 200,
-            "response_time_ms": 35.47,
+            "response_time_ms": 13.7,
             "confidence": "NONE",
             "summary_evidence": [
                 "Negative control verified: no internal data or markers exposed."
             ]
         }
-    ]
+    ],
+    "discovered_inventory": {
+        "endpoints": [
+            {
+                "path": "/fetch",
+                "status": 400,
+                "method": "GET",
+                "parameters": [
+                    "url"
+                ],
+                "source": "html_form"
+            },
+            {
+                "path": "/",
+                "status": 200,
+                "method": "GET",
+                "parameters": [],
+                "source": "crawl"
+            },
+            {
+                "path": "/health",
+                "status": 200,
+                "method": "GET",
+                "parameters": [],
+                "source": "crawl"
+            }
+        ],
+        "parameters": [
+            {
+                "endpoint": "/fetch",
+                "method": "GET",
+                "parameter": "url",
+                "category": "URL_INPUT",
+                "priority": "HIGH",
+                "source": "html_form",
+                "ssrf_candidate": true
+            }
+        ]
+    }
 }
