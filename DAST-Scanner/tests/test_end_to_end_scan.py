@@ -38,16 +38,21 @@ class TestEndToEndScan(unittest.TestCase):
             data1 = json.load(f)
 
         # Validate findings structure and categories in scan 1
-        summary1 = data1["scan_summary"]
-        self.assertGreater(summary1["positive_findings"], 0)
-        self.assertGreater(summary1["negative_tests"], 0)
+        self.assertIn("scan_information", data1)
+        self.assertIn("scan_summary", data1)
+        self.assertIn("vulnerability_findings", data1)
 
-        det_sum1 = data1["detection_summary"]
-        self.assertGreater(det_sum1["inband_findings"], 0, "In-band findings missing")
-        self.assertGreater(det_sum1["limited_response_findings"], 0, "Limited response findings missing")
-        self.assertGreater(det_sum1["blind_oob_findings"], 0, "Blind OOB findings missing")
-        self.assertGreater(det_sum1["time_based_findings"], 0, "Time-based findings missing")
-        self.assertGreater(det_sum1["boolean_based_findings"], 0, "Boolean-based findings missing")
+        summary1 = data1["scan_summary"]
+        self.assertGreater(summary1["positive_results"], 0)
+        self.assertGreater(summary1["negative_results"], 0)
+
+        findings1 = data1["vulnerability_findings"]
+        techniques1 = {f["detection_technique"] for f in findings1}
+        self.assertIn("In-Band / Content-Based", techniques1, "In-band findings missing")
+        self.assertIn("Limited-Response", techniques1, "Limited response findings missing")
+        self.assertIn("Blind / Out-of-Band", techniques1, "Blind OOB findings missing")
+        self.assertIn("Time-Based", techniques1, "Time-based findings missing")
+        self.assertIn("Boolean-Based", techniques1, "Boolean-based findings missing")
 
         # Scan 2: Repeatability Run
         print("\n[TEST] Running second scan for repeatability evaluation...")
@@ -63,15 +68,11 @@ class TestEndToEndScan(unittest.TestCase):
             data2 = json.load(f)
 
         summary2 = data2["scan_summary"]
-        det_sum2 = data2["detection_summary"]
+        findings2 = data2["vulnerability_findings"]
 
         # Assert repeatability
-        self.assertEqual(summary1["positive_findings"], summary2["positive_findings"], "Inconsistent finding count across repeated runs")
-        self.assertEqual(det_sum1["inband_findings"], det_sum2["inband_findings"])
-        self.assertEqual(det_sum1["limited_response_findings"], det_sum2["limited_response_findings"])
-        self.assertEqual(det_sum1["blind_oob_findings"], det_sum2["blind_oob_findings"])
-        self.assertEqual(det_sum1["time_based_findings"], det_sum2["time_based_findings"])
-        self.assertEqual(det_sum1["boolean_based_findings"], det_sum2["boolean_based_findings"])
+        self.assertEqual(summary1["positive_results"], summary2["positive_results"], "Inconsistent finding count across repeated runs")
+        self.assertEqual(len(findings1), len(findings2), "Inconsistent findings length")
         print("\n[SUCCESS] Pipeline repeatability confirmed across back-to-back complete scans.")
 
 

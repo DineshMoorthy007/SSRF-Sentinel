@@ -1,237 +1,167 @@
 import json
 import os
 from datetime import datetime, timezone
-from config import PROJECT_NAME, VERSION, TARGET_URL
+from config import PROJECT_NAME, TARGET_URL
 
 
 class JSONReporter:
     """
-    Standards-compliant, human-readable JSON vulnerability reporting system for SSRF Sentinel.
-    Produces clear, executive-ready assessment reports that explain what was tested,
-    what was detected, why it matters, and how to fix it in simple, accessible language
-    while strictly preserving raw technical evidence.
+    Compact, beginner-friendly JSON vulnerability reporter for SSRF Sentinel.
+    Generates a simple, clean, and easily understandable vulnerability report
+    designed for faculty members, interviewers, and beginners.
     """
 
-    TECHNIQUE_METADATA = {
-        "INBAND_SSRF": {
-            "name": "In-Band / Content-Based SSRF",
-            "description": "Checks if the application returns internal resource content directly to the user.",
-            "remediation": (
-                "Enforce strict destination allowlists on the server-side HTTP client. "
-                "Prevent the reflection of internal response bodies to callers. Implement network-level "
-                "egress filtering blocking private/loopback IP address ranges (RFC 1918 / RFC 5735)."
-            )
+    FINDING_TEMPLATES = {
+        "INBAND_SECRET_PROBE": {
+            "vulnerability_name": "Internal Secret Exposure",
+            "detection_technique": "In-Band / Content-Based",
+            "severity": "High",
+            "description": "The application fetched a simulated internal test secret and returned its restricted content directly in the response.",
+            "evidence": "The internal verification marker (SSRF_SENTINEL_INTERNAL_ACCESS_2026) was found in the application's response.",
+            "potential_impact": "An attacker could read sensitive internal files, API keys, and private data not exposed to the public internet.",
+            "recommended_fix": "Validate and restrict destination URLs. Block the server from sending requests to loopback and private internal network addresses."
         },
-        "LIMITED_RESPONSE_SSRF": {
-            "name": "Limited-Response SSRF",
-            "description": "Checks if partial internal request artifacts (status codes, headers, truncated fragments) leak back to the user.",
-            "remediation": (
-                "Suppress downstream HTTP status codes, headers, and error fragments. "
-                "Return standardized generic responses regardless of internal request outcome. "
-                "Enforce egress filtering on server-side request forwarders."
-            )
+        "INBAND_ADMIN_CONFIG": {
+            "vulnerability_name": "Internal Admin Configuration Leakage",
+            "detection_technique": "In-Band / Content-Based",
+            "severity": "High",
+            "description": "The application fetched an internal administrative configuration endpoint and exposed simulated database and session keys.",
+            "evidence": "The internal admin verification marker (SSRF_SENTINEL_INBAND_FULL_ACCESS) and internal headers were returned in the response.",
+            "potential_impact": "An attacker could obtain administrative credentials and database connection details to compromise backend infrastructure.",
+            "recommended_fix": "Enforce a strict domain allowlist for outgoing requests and prevent backend response bodies from being forwarded to users."
         },
-        "BLIND_OOB_SSRF": {
-            "name": "Blind / Out-of-Band SSRF",
-            "description": "Checks if the server initiates external requests without returning the response, verified via an independent callback receiver.",
-            "remediation": (
-                "Isolate backend request forwarders within a restricted network zone with default-deny "
-                "egress rules. Enforce proxy authentication and block unauthorized outbound TCP/UDP traffic."
-            )
+        "INBAND_STATUS_PROBE": {
+            "vulnerability_name": "Internal Service Metadata Exposure",
+            "detection_technique": "In-Band / Content-Based",
+            "severity": "Medium",
+            "description": "The application fetched an internal heartbeat service and exposed internal environment and service details.",
+            "evidence": "The internal test service identifier was returned in the response body.",
+            "potential_impact": "An attacker could map internal network topology and identify active internal services.",
+            "recommended_fix": "Restrict outgoing requests to authorized external services and disable access to internal diagnostic endpoints."
+        },
+        "LIMITED_STATUS_ONLY": {
+            "vulnerability_name": "Internal Request Execution via HTTP 204",
+            "detection_technique": "Limited-Response",
+            "severity": "Medium",
+            "description": "The application processed a request to an internal endpoint that returns an HTTP 204 No Content status, forwarding the success status.",
+            "evidence": "The server returned HTTP 204 No Content with an empty body, confirming the internal request succeeded.",
+            "potential_impact": "An attacker could use status codes to probe and map live internal network hosts and open ports.",
+            "recommended_fix": "Do not forward raw downstream HTTP status codes to users. Always return uniform application responses."
+        },
+        "LIMITED_HEADER_ONLY": {
+            "vulnerability_name": "Internal Header Information Leakage",
+            "detection_technique": "Limited-Response",
+            "severity": "Medium",
+            "description": "The application forwarded custom metadata headers from an internal service while suppressing the response body.",
+            "evidence": "The internal test header marker (X-Internal-Marker: SSRF_HEADER_ONLY_FLAG) was present in the response headers.",
+            "potential_impact": "Internal headers can leak backend server details, internal routing names, and software versions.",
+            "recommended_fix": "Strip all internal headers before sending the response to the client, or avoid forwarding internal headers entirely."
+        },
+        "LIMITED_TRUNCATED": {
+            "vulnerability_name": "Truncated Internal Response Disclosure",
+            "detection_technique": "Limited-Response",
+            "severity": "Medium",
+            "description": "The application fetched an internal resource that returned a partially truncated data string.",
+            "evidence": "A partial internal secret fragment was identified in the response body.",
+            "potential_impact": "Partial data leaks can expose fragments of internal secrets, tokens, or memory buffers.",
+            "recommended_fix": "Block requests to internal IP addresses and sanitize outgoing response streams."
+        },
+        "LIMITED_GENERIC": {
+            "vulnerability_name": "Generic Internal Execution Confirmation",
+            "detection_technique": "Limited-Response",
+            "severity": "Low",
+            "description": "The application accessed an internal resource that responded with a generic execution confirmation.",
+            "evidence": "The server returned a success confirmation message distinct from the baseline rejection response.",
+            "potential_impact": "An attacker could confirm the existence and availability of hidden internal APIs.",
+            "recommended_fix": "Return uniform error messages when a requested URL is rejected, without disclosing execution state."
+        },
+        "LIMITED_SUPPRESSED": {
+            "vulnerability_name": "Policy-Suppressed Content Disclosure",
+            "detection_technique": "Limited-Response",
+            "severity": "Low",
+            "description": "The application processed an internal request where content filtering was triggered, revealing that an internal resource was intercepted.",
+            "evidence": "The response contained an active policy suppression indicator ([CONTENT_SUPPRESSED_BY_POLICY]).",
+            "potential_impact": "Confirms to an attacker that the targeted internal endpoint exists and triggers security filter rules.",
+            "recommended_fix": "Reject unauthorized internal destination URLs at the network layer rather than relying only on response filtering."
+        },
+        "BLIND_OOB_CALLBACK": {
+            "vulnerability_name": "Blind SSRF via Local Callback",
+            "detection_technique": "Blind / Out-of-Band",
+            "severity": "High",
+            "description": "The application made a server-side HTTP request to a local test listener on port 8090 without returning the response content.",
+            "evidence": "The dedicated local callback receiver confirmed an incoming request with the matching test tracking token.",
+            "potential_impact": "An attacker could trigger requests to unauthenticated internal services, webhook systems, or trigger remote callbacks.",
+            "recommended_fix": "Block the server from initiating arbitrary outbound HTTP connections and restrict egress network routing."
         },
         "TIME_BASED_SSRF": {
-            "name": "Time-Based SSRF",
-            "description": "Checks for measurable differences in server response time caused by delays introduced during internal requests.",
-            "remediation": (
-                "Enforce aggressive socket connect and read timeouts (<= 2s) on internal HTTP requests. "
-                "Decouple backend request execution from client HTTP lifecycles using asynchronous background workers."
-            )
+            "vulnerability_name": "Time-Based Internal Request Detection",
+            "detection_technique": "Time-Based",
+            "severity": "Medium",
+            "description": "The application took noticeably longer to respond when asked to fetch an internally delayed endpoint compared to an immediate endpoint.",
+            "evidence": "A consistent delay of approximately 2.0 seconds was measured across multiple probe iterations compared to fast baseline requests.",
+            "potential_impact": "An attacker could infer whether internal IP addresses or ports are open based on response latency.",
+            "recommended_fix": "Set strict connection and read timeouts on server-side requests (e.g., 2 seconds or less)."
         },
         "BOOLEAN_BASED_SSRF": {
-            "name": "Boolean-Based SSRF",
-            "description": "Checks if the application produces distinguishable responses when evaluating true versus false internal conditions.",
-            "remediation": (
-                "Normalize server-side application responses so conditional downstream queries do not produce "
-                "measurable divergences in HTTP status codes, content lengths, or structural evaluation headers."
-            )
-        },
-        "NEGATIVE_CONTROL": {
-            "name": "Negative Control Calibration",
-            "description": "Verifies that baseline public requests do not falsely trigger SSRF vulnerability indicators.",
-            "remediation": "N/A - Control calibration test."
+            "vulnerability_name": "Boolean-Based Internal Request Detection",
+            "detection_technique": "Boolean-Based",
+            "severity": "Medium",
+            "description": "The application returned clearly different responses when internal true and false test conditions were evaluated.",
+            "evidence": "The server returned HTTP 200 (large response) for the true condition and HTTP 404 (small response) for the false condition.",
+            "potential_impact": "An attacker could exfiltrate internal data bit-by-bit using conditional true/false queries.",
+            "recommended_fix": "Ensure the application returns consistent HTTP status codes and response formats regardless of downstream conditions."
         }
     }
-
-    CONFIDENCE_SCALE = {
-        "LAB_CONFIRMED": "The expected verification evidence was successfully observed in the controlled test environment.",
-        "HIGH": "Strong evidence of SSRF-related behaviour was observed.",
-        "MEDIUM": "Some evidence was observed, but additional verification is required.",
-        "LOW": "Weak evidence that may be caused by other application behaviour.",
-        "INCONCLUSIVE": "The test did not provide enough information for a reliable conclusion."
-    }
-
-    GLOSSARY = {
-        "In-Band SSRF": "The application returns the internal resource's content directly in its response to the user.",
-        "Limited-Response SSRF": "Detection when only partial information about an internal request (such as a status code, header, or error message) is returned.",
-        "Blind / Out-of-Band SSRF": "The application makes an internal request without showing its response, detected using an independent callback receiver.",
-        "Time-Based SSRF": "Detection using measurable differences in server response time caused by internal delays.",
-        "Boolean-Based SSRF": "Detection by comparing server responses to true and false conditions."
-    }
-
-    CONSOLIDATED_RECOMMENDATIONS = [
-        {
-            "priority": "HIGH",
-            "title": "Implement Strict Destination Allowlisting",
-            "description": (
-                "Restrict the URL-fetching functionality to an explicit allowlist of authorized external domains and IP addresses. "
-                "Explicitly reject requests to loopback addresses (127.0.0.0/8), private network ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), "
-                "and cloud metadata endpoints (169.254.169.254)."
-            )
-        },
-        {
-            "priority": "HIGH",
-            "title": "Enforce Network-Level Egress Filtering",
-            "description": (
-                "Configure host firewall and network routing rules so that the application server cannot initiate outbound connections "
-                "to internal microservices, databases, or unauthorized local ports. Use a dedicated egress proxy for necessary outbound web requests."
-            )
-        },
-        {
-            "priority": "MEDIUM",
-            "title": "Suppress Downstream Response Details",
-            "description": (
-                "Do not relay raw response bodies, headers, or internal error messages back to clients. "
-                "Always return generic, standardized status responses regardless of internal request outcomes to eliminate limited-response leakage."
-            )
-        },
-        {
-            "priority": "MEDIUM",
-            "title": "Set Strict Request Timeouts",
-            "description": (
-                "Enforce short, bounded socket connection and read timeouts (e.g. <= 2 seconds) on outgoing requests. "
-                "This prevents time-based inference attacks and shields the server against request starvation denial-of-service."
-            )
-        },
-        {
-            "priority": "LOW",
-            "title": "Normalize Conditional Responses",
-            "description": (
-                "Ensure that application responses have uniform HTTP status codes, headers, and body lengths "
-                "regardless of whether a downstream condition is true or false, eliminating Boolean-based side-channel probing."
-            )
-        }
-    ]
 
     def __init__(self):
         self.report_directory = "reports"
         os.makedirs(self.report_directory, exist_ok=True)
 
-    def _generate_human_descriptions(self, item):
-        """Generates plain English descriptions for what was tested, what happened, and why it matters."""
+    def _format_finding(self, index, item):
         probe_id = item.get("extra_metadata", {}).get("probe_id", "")
         category = item.get("vulnerability_category", "")
-        payload = item.get("payload", "")
 
-        # Default fallbacks
-        vuln_name = "Server-Side Request Forgery"
-        what_tested = f"Tested endpoint with probe URL: {payload}"
-        what_happened = "The application processed the request and exhibited observable internal behavior."
-        why_matters = "Allows attackers to instruct the backend server to make unauthorized requests to internal resources."
-        human_evidence = "Observed server behavior indicates interaction with the requested destination."
-
-        # Probe-specific descriptions
-        if probe_id == "INBAND_SECRET_PROBE":
-            vuln_name = "In-Band SSRF - Internal Secret Data Exposure"
-            what_tested = "Instructed the server to fetch the internal secret resource at http://127.0.0.1:8081/internal/secret."
-            what_happened = "The server retrieved the internal resource and returned the internal secret data and mock service headers directly to the client."
-            why_matters = "An external attacker can abuse this parameter to access private internal services, stealing authentication credentials and restricted internal data."
-            human_evidence = "The application returned content from an internal service through its URL-fetching functionality."
-
-        elif probe_id == "INBAND_ADMIN_CONFIG":
-            vuln_name = "In-Band SSRF - Administrative Configuration Exposure"
-            what_tested = "Instructed the server to fetch the internal admin configuration vault at http://127.0.0.1:8081/internal/admin/config."
-            what_happened = "The server fetched the administrative configuration and exposed database connection strings and session keys."
-            why_matters = "Leaking internal administrative credentials allows attackers to pivot to internal databases and gain full administrative control."
-            human_evidence = "The response revealed sensitive internal database URIs, admin session keys, and network topology metadata."
-
-        elif probe_id == "INBAND_STATUS_PROBE":
-            vuln_name = "In-Band SSRF - Internal Service Metadata Exposure"
-            what_tested = "Instructed the server to fetch the internal health status service at http://127.0.0.1:8081/internal/status."
-            what_happened = "The server fetched and returned internal service environment metadata."
-            why_matters = "Disclosing internal network details helps attackers map internal network architecture and identify internal service names."
-            human_evidence = "The application returned the internal service heartbeat and environment classification."
-
-        elif probe_id == "LIMITED_STATUS_ONLY":
-            vuln_name = "Limited-Response SSRF - Status-Only Downstream Leakage"
-            what_tested = "Instructed the server to fetch an internal endpoint that returns an HTTP 204 No Content status code."
-            what_happened = "The public application forwarded the HTTP 204 status with an empty body, confirming the internal request succeeded."
-            why_matters = "Even without seeing the response body, receiving distinct HTTP status codes allows an attacker to port scan and map internal services."
-            human_evidence = "The server returned HTTP 204 No Content, confirming the internal request was executed successfully."
-
-        elif probe_id == "LIMITED_HEADER_ONLY":
-            vuln_name = "Limited-Response SSRF - Header-Only Information Leakage"
-            what_tested = "Instructed the server to fetch an internal endpoint configured to return custom metadata headers without a response body."
-            what_happened = "The public application forwarded internal response headers (X-Internal-Marker) while omitting the body."
-            why_matters = "Internal headers can leak backend server software, routing paths, internal hostnames, and application state."
-            human_evidence = "Internal headers were leaked into the public response while the response body was empty."
-
-        elif probe_id == "LIMITED_TRUNCATED":
-            vuln_name = "Limited-Response SSRF - Truncated Response Body Disclosure"
-            what_tested = "Instructed the server to fetch an internal endpoint that returns a partially truncated response body."
-            what_happened = "The server returned a truncated fragment of internal data, indicating response length restriction or buffer clipping."
-            why_matters = "Partial internal disclosures can still leak sensitive token fragments, session identifiers, and internal memory contents."
-            human_evidence = "The server returned a partial fragment of internal data, showing response truncation occurred."
-
-        elif probe_id == "LIMITED_GENERIC":
-            vuln_name = "Limited-Response SSRF - Generic Execution Confirmation"
-            what_tested = "Instructed the server to fetch an internal endpoint that responds with a generic success message."
-            what_happened = "The server returned a generic success message distinct from the baseline 403 error response."
-            why_matters = "Confirmation of internal request execution allows attackers to verify the existence of hidden internal endpoints."
-            human_evidence = "The application returned a generic internal success message confirming that the internal endpoint executed."
-
-        elif probe_id == "LIMITED_SUPPRESSED":
-            vuln_name = "Limited-Response SSRF - Policy-Suppressed Content Indicator"
-            what_tested = "Instructed the server to fetch an internal endpoint where content was filtered by a simulated policy filter."
-            what_happened = "The server returned a response containing an active policy suppression indicator ([CONTENT_SUPPRESSED_BY_POLICY])."
-            why_matters = "Policy filtering indicators confirm that internal requests reached the backend and that protective filters are applied downstream."
-            human_evidence = "The response contained an explicit content suppression marker, confirming internal resource retrieval was intercepted."
-
-        elif probe_id == "BLIND_OOB_CALLBACK" or "BLIND" in category or "OOB" in category:
-            token = item.get("extra_metadata", {}).get("oob_token", "unique_token")
-            vuln_name = "Blind Out-of-Band (OOB) SSRF - External Request Trigger"
-            what_tested = f"Instructed the server to send a request to a dedicated local callback listener carrying tracking token '{token}'."
-            what_happened = "The application initiated an outbound request to the callback listener on port 8090, which logged the matching token."
-            why_matters = "When response content is hidden from the user, blind SSRF can still be used to trigger remote actions or attack other internal network services."
-            human_evidence = f"An independent callback receiver on port 8090 captured an incoming request with the matching test token '{token}'."
-
+        # Match against known probe templates
+        template = None
+        if probe_id in self.FINDING_TEMPLATES:
+            template = self.FINDING_TEMPLATES[probe_id]
+        elif category in self.FINDING_TEMPLATES:
+            template = self.FINDING_TEMPLATES[category]
+        elif "BLIND" in category or "OOB" in category:
+            template = self.FINDING_TEMPLATES["BLIND_OOB_CALLBACK"]
         elif "TIME" in category:
-            delta = item.get("extra_metadata", {}).get("delta_seconds", "N/A")
-            vuln_name = "Time-Based SSRF - Differential Response Latency"
-            what_tested = "Measured and compared server response times between an immediate baseline request and a 2-second delayed internal request."
-            what_happened = f"The server took measurably longer to respond (delay delta: ~{delta}s), directly reflecting the internal endpoint's delay."
-            why_matters = "Response time differences allow attackers to infer internal network state, scan for live internal hosts, and extract data bit-by-bit."
-            human_evidence = f"The server exhibited a consistent, measurable delay (delta: {delta}s) when accessing the delayed internal resource."
-
+            template = self.FINDING_TEMPLATES["TIME_BASED_SSRF"]
         elif "BOOLEAN" in category:
-            vuln_name = "Boolean-Based SSRF - Differential Conditional Evaluation"
-            what_tested = "Evaluated differences in server response when requesting internal TRUE versus FALSE conditional endpoints."
-            what_happened = "The server returned distinct HTTP status codes (200 vs 404) and different content lengths between TRUE and FALSE conditions."
-            why_matters = "Conditional differences allow an attacker to perform Boolean-based blind data exfiltration by asking true/false queries."
-            human_evidence = "The application returned clearly distinguishable responses (different status codes and byte lengths) based on internal condition evaluation."
+            template = self.FINDING_TEMPLATES["BOOLEAN_BASED_SSRF"]
 
-        elif "NEGATIVE_CONTROL" in category:
-            vuln_name = "Negative Control - Baseline Public Request"
-            what_tested = "Instructed the server to fetch a normal public health check endpoint."
-            what_happened = "The application processed the public endpoint without leaking internal metadata or triggering false positive indicators."
-            why_matters = "Validates that the scanner does not falsely report normal application behavior as a vulnerability."
-            human_evidence = "No internal markers or unauthorized metadata were exposed."
+        if template:
+            vuln_name = template["vulnerability_name"]
+            technique = template["detection_technique"]
+            severity = template["severity"]
+            description = template["description"]
+            evidence = template["evidence"]
+            impact = template["potential_impact"]
+            fix = template["recommended_fix"]
+        else:
+            vuln_name = "Server-Side Request Forgery"
+            technique = item.get("detection_technique", "SSRF Probing")
+            severity = "Medium"
+            description = "The application allowed its server to fetch an internal resource based on user-supplied input."
+            evidence = item.get("evidence", ["Observed server response indicates internal request execution."])[0]
+            impact = "An attacker could potentially use this functionality to access sensitive internal resources."
+            fix = "Validate and restrict all destination URLs. Block unauthorized requests to internal network resources."
 
         return {
+            "id": f"SSRF-{index:02d}",
             "vulnerability_name": vuln_name,
-            "what_was_tested": what_tested,
-            "what_happened": what_happened,
-            "why_this_matters": why_matters,
-            "human_readable_summary": human_evidence
+            "detection_technique": technique,
+            "severity": severity,
+            "affected_endpoint": item.get("endpoint", "/fetch"),
+            "affected_parameter": item.get("parameter", "url"),
+            "description": description,
+            "evidence": evidence,
+            "potential_impact": impact,
+            "recommended_fix": fix
         }
 
     def generate_report(
@@ -248,192 +178,37 @@ class JSONReporter:
         # Categorize test results
         positive_tests = [f for f in findings if f.get("detected") and f.get("test_outcome") == "POSITIVE"]
         negative_tests = [f for f in findings if not f.get("detected") and f.get("test_outcome") == "NEGATIVE"]
-        inconclusive_tests = [f for f in findings if f.get("confidence") == "INCONCLUSIVE"]
-        failed_tests = [f for f in findings if f.get("test_outcome") == "FAILED"]
+        inconclusive_tests = [f for f in findings if f.get("confidence") == "INCONCLUSIVE" or f.get("test_outcome") == "FAILED"]
 
-        # Track per-technique statistics
-        tech_counts = {
-            "INBAND_SSRF": {"tests": 0, "positive": 0},
-            "LIMITED_RESPONSE_SSRF": {"tests": 0, "positive": 0},
-            "BLIND_OOB_SSRF": {"tests": 0, "positive": 0},
-            "TIME_BASED_SSRF": {"tests": 0, "positive": 0},
-            "BOOLEAN_BASED_SSRF": {"tests": 0, "positive": 0},
-            "NEGATIVE_CONTROL": {"tests": 0, "positive": 0}
-        }
-
-        confidence_counts = {
-            "LAB_CONFIRMED": 0,
-            "HIGH": 0,
-            "MEDIUM": 0,
-            "LOW": 0,
-            "INCONCLUSIVE": 0
-        }
-
-        for item in findings:
-            cat = item.get("vulnerability_category", "")
-            if cat in tech_counts:
-                tech_counts[cat]["tests"] += 1
-                if item.get("detected"):
-                    tech_counts[cat]["positive"] += 1
-
-            conf = item.get("confidence", "")
-            if item.get("detected") and conf in confidence_counts:
-                confidence_counts[conf] += 1
-
-        # Format individual detailed findings (for positive vulnerabilities)
-        detailed_findings = []
+        # Build clean, simplified findings list
+        vulnerability_findings = []
         for index, item in enumerate(positive_tests, start=1):
-            category = item.get("vulnerability_category", "UNKNOWN_SSRF")
-            confidence = item.get("confidence", "MEDIUM")
-            descriptions = self._generate_human_descriptions(item)
-            tech_info = self.TECHNIQUE_METADATA.get(category, {
-                "name": item.get("detection_technique", "SSRF Probing"),
-                "remediation": "Restrict outgoing HTTP connections to an allowlist of approved destinations."
-            })
+            vulnerability_findings.append(self._format_finding(index, item))
 
-            detailed_findings.append({
-                "finding_id": f"SSRF-FINDING-{index:03d}",
-                "vulnerability_name": descriptions["vulnerability_name"],
-                "detection_technique": tech_info["name"],
-                "affected_endpoint": item.get("endpoint", ""),
-                "affected_parameter": item.get("parameter", ""),
-                "http_method": item.get("method", "GET"),
-                "test_result": "Detected",
-                "confidence_level": confidence,
-                "what_was_tested": descriptions["what_was_tested"],
-                "what_happened": descriptions["what_happened"],
-                "why_this_matters": descriptions["why_this_matters"],
-                "evidence": {
-                    "human_readable_summary": descriptions["human_readable_summary"],
-                    "technical_evidence": item.get("evidence", []),
-                    "verification_method": item.get("verification_method", "Direct Protocol Analysis"),
-                    "http_status_code": item.get("http_status"),
-                    "response_time_ms": item.get("response_time_ms")
-                },
-                "recommended_remediation": tech_info["remediation"]
-            })
-
-        # Build technique summary list
-        techniques_summary = []
-        for cat_key in ("INBAND_SSRF", "LIMITED_RESPONSE_SSRF", "BLIND_OOB_SSRF", "TIME_BASED_SSRF", "BOOLEAN_BASED_SSRF"):
-            meta = self.TECHNIQUE_METADATA[cat_key]
-            stats = tech_counts[cat_key]
-            techniques_summary.append({
-                "technique_name": meta["name"],
-                "plain_english_description": meta["description"],
-                "tests_performed": stats["tests"],
-                "positive_findings": stats["positive"],
-                "status": "VULNERABILITY_DETECTED" if stats["positive"] > 0 else "CLEAN"
-            })
-
-        # Executive summary narrative based on actual results
-        if len(positive_tests) > 0:
-            exec_summary_text = (
-                "The automated security scan identified Server-Side Request Forgery (SSRF) behaviour in the target application's "
-                "URL-fetching functionality. The application allowed the server to initiate requests to internal test resources "
-                "and an independent local callback receiver using user-supplied URLs. These findings demonstrate that an attacker "
-                "could leverage the server to bypass perimeter network controls and access internal services. "
-                "All tests were conducted in a controlled local laboratory environment."
-            )
-            risk_level = "HIGH"
-        else:
-            exec_summary_text = (
-                "The automated security scan did not detect any confirmed Server-Side Request Forgery (SSRF) behaviour in the "
-                "target application during this assessment. The tested parameters did not permit unauthorized access to internal resources."
-            )
-            risk_level = "LOW"
-
-        key_highlights = []
-        if tech_counts["INBAND_SSRF"]["positive"] > 0:
-            key_highlights.append(f"In-Band SSRF: {tech_counts['INBAND_SSRF']['positive']} probe(s) successfully retrieved internal secret data directly into responses.")
-        if tech_counts["LIMITED_RESPONSE_SSRF"]["positive"] > 0:
-            key_highlights.append(f"Limited-Response SSRF: {tech_counts['LIMITED_RESPONSE_SSRF']['positive']} probe(s) exposed internal state via status codes, custom headers, or filtered messages.")
-        if tech_counts["BLIND_OOB_SSRF"]["positive"] > 0:
-            key_highlights.append("Blind / Out-of-Band SSRF: Target initiated an outbound HTTP request verified by a local callback listener.")
-        if tech_counts["TIME_BASED_SSRF"]["positive"] > 0:
-            key_highlights.append("Time-Based SSRF: Measurable latency differences confirmed the server waited on internal delayed endpoints.")
-        if tech_counts["BOOLEAN_BASED_SSRF"]["positive"] > 0:
-            key_highlights.append("Boolean-Based SSRF: The server returned distinct responses for true and false internal conditions.")
-        if not key_highlights:
-            key_highlights.append("No active SSRF vulnerabilities identified.")
-
-        # Test execution details (complete audit log of every test)
-        test_execution_records = []
-        for idx, item in enumerate(findings, start=1):
-            cat = item.get("vulnerability_category", "")
-            tech_name = self.TECHNIQUE_METADATA.get(cat, {}).get("name", item.get("detection_technique", "Unknown"))
-            test_execution_records.append({
-                "test_index": idx,
-                "technique": tech_name,
-                "endpoint": item.get("endpoint"),
-                "parameter": item.get("parameter"),
-                "payload": item.get("payload"),
-                "outcome": item.get("test_outcome", "UNKNOWN"),
-                "status_code": item.get("http_status"),
-                "response_time_ms": item.get("response_time_ms"),
-                "confidence": item.get("confidence"),
-                "summary_evidence": item.get("evidence", [])[:2]
-            })
-
-        # Assemble the comprehensive report
         report = {
-            "scan_overview": {
+            "scan_information": {
                 "project_name": PROJECT_NAME,
-                "scanner_version": VERSION,
-                "scan_date_time": datetime.now(timezone.utc).isoformat(),
-                "scan_duration_seconds": round(scan_duration_seconds, 2),
                 "target_url": TARGET_URL,
-                "scan_status": "COMPLETED",
-                "total_endpoints_discovered": len(endpoints),
-                "total_parameters_analysed": len(parameters),
-                "total_tests_executed": total_tests,
-                "positive_findings": len(positive_tests),
-                "negative_tests": len(negative_tests),
-                "inconclusive_tests": len(inconclusive_tests),
-                "failed_tests": len(failed_tests)
-            },
-            "scan_summary": {
-                "total_endpoints": len(endpoints),
-                "total_parameters": len(parameters),
-                "total_tests": total_tests,
-                "positive_findings": len(positive_tests),
-                "negative_tests": len(negative_tests),
-                "inconclusive_tests": len(inconclusive_tests),
-                "failed_tests": len(failed_tests),
+                "scan_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "scan_status": "COMPLETED"
             },
-            "executive_summary": {
-                "summary": exec_summary_text,
-                "overall_risk_level": risk_level,
-                "key_findings": key_highlights,
-                "assessment_environment": "Controlled local test environment (loopback: 127.0.0.1)"
+            "scan_summary": {
+                "endpoints_discovered": len(endpoints),
+                "parameters_analysed": len(parameters),
+                "total_tests_performed": total_tests,
+                "positive_results": len(positive_tests),
+                "negative_results": len(negative_tests),
+                "inconclusive_results": len(inconclusive_tests)
             },
-            "detection_summary": {
-                "techniques": techniques_summary,
-                "confidence_breakdown": confidence_counts,
-                "inband_findings": tech_counts["INBAND_SSRF"]["positive"],
-                "limited_response_findings": tech_counts["LIMITED_RESPONSE_SSRF"]["positive"],
-                "blind_oob_findings": tech_counts["BLIND_OOB_SSRF"]["positive"],
-                "time_based_findings": tech_counts["TIME_BASED_SSRF"]["positive"],
-                "boolean_based_findings": tech_counts["BOOLEAN_BASED_SSRF"]["positive"]
-            },
-            "detailed_findings": detailed_findings,
-            "confidence_scale_reference": self.CONFIDENCE_SCALE,
-            "technical_concepts_glossary": self.GLOSSARY,
-            "recommendations": self.CONSOLIDATED_RECOMMENDATIONS,
-            "test_execution_records": test_execution_records,
-            "discovered_inventory": {
-                "endpoints": endpoints,
-                "parameters": parameters
-            }
+            "vulnerability_findings": vulnerability_findings
         }
 
         report_path = os.path.join(self.report_directory, "ssrf_report.json")
 
         with open(report_path, "w", encoding="utf-8") as report_file:
-            json.dump(report, report_file, indent=4, ensure_ascii=False, default=str)
+            json.dump(report, report_file, indent=4, ensure_ascii=False)
 
-        print("\n[REPORT] JSON report generated successfully.")
+        print("\n[REPORT] Clean JSON report generated successfully.")
         print(f"[REPORT] Location: {os.path.abspath(report_path)}")
 
         return report_path
