@@ -1,7 +1,8 @@
 import json
 import os
-from typing import List, Dict, Any
-from config import PROJECT_NAME, TARGET_URL
+from datetime import datetime, timezone
+from typing import List, Dict, Any, Optional
+from config import PROJECT_NAME, TARGET_URL, VERSION
 
 
 class JSONReporter:
@@ -82,6 +83,7 @@ class JSONReporter:
     def __init__(self, report_dir: str = "reports"):
         self.report_dir = report_dir
         os.makedirs(self.report_dir, exist_ok=True)
+        self.last_report_data: Optional[Dict[str, Any]] = None
 
     def _classify_probe(self, probe: dict) -> str:
         """Categorizes an individual probe into a unique vulnerability class."""
@@ -155,9 +157,12 @@ class JSONReporter:
                 "endpoint": endpoint,
                 "parameter": param,
                 "description": catalog_entry["description"],
-                "evidence": evidence_set[:5],  # Keep evidence concise
+                "what_happened": catalog_entry["description"],
                 "impact": catalog_entry["impact"],
-                "recommendation": catalog_entry["recommendation"]
+                "why_it_matters": catalog_entry["impact"],
+                "evidence": evidence_set[:5],  # Keep evidence concise
+                "recommendation": catalog_entry["recommendation"],
+                "recommended_fix": catalog_entry["recommendation"]
             })
 
         return vulnerabilities
@@ -169,7 +174,8 @@ class JSONReporter:
         findings: list,
         total_tests: int = None,
         scan_duration_seconds: float = None,
-        output_filename: str = "ssrf_report.json"
+        output_filename: str = "ssrf_report.json",
+        scan_mode: str = "vulnerable"
     ) -> str:
         """
         Generates clean, readable, developer-friendly JSON report conforming
@@ -184,9 +190,29 @@ class JSONReporter:
         inconclusive_tests = sum(1 for f in findings if f.get("confidence") == "INCONCLUSIVE")
         negative_tests = tests_executed - positive_tests - inconclusive_tests
 
+        # Normalize endpoints list
+        endpoint_paths = []
+        for e in endpoints:
+            if isinstance(e, dict):
+                endpoint_paths.append(e.get("endpoint", e.get("path", "")))
+            else:
+                endpoint_paths.append(str(e))
+
+        # Normalize parameters list
+        param_names = []
+        for p in parameters:
+            if isinstance(p, dict):
+                param_names.append(p.get("parameter", p.get("name", "")))
+            else:
+                param_names.append(str(p))
+
         report_data = {
             "project": PROJECT_NAME,
+            "version": VERSION,
             "target": TARGET_URL,
+            "scan_mode": scan_mode.upper(),
+            "scan_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "scan_duration_seconds": round(scan_duration_seconds, 2) if scan_duration_seconds else None,
             "scan_status": "COMPLETED",
             "summary": {
                 "endpoints_discovered": len(endpoints),
@@ -197,8 +223,12 @@ class JSONReporter:
                 "inconclusive_tests": inconclusive_tests,
                 "unique_findings": len(vulnerabilities)
             },
+            "endpoints": endpoint_paths,
+            "parameters": param_names,
             "vulnerabilities": vulnerabilities
         }
+
+        self.last_report_data = report_data
 
         output_path = os.path.join(self.report_dir, output_filename)
         with open(output_path, "w", encoding="utf-8") as f:

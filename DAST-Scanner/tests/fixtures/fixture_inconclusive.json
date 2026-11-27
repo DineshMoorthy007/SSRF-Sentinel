@@ -1,0 +1,16 @@
+{
+  "project": "SSRF Sentinel",
+  "version": "2.1",
+  "target": "http://127.0.0.1:8080",
+  "scan_status": "COMPLETED",
+  "summary": {
+    "endpoints_discovered": 2,
+    "parameters_tested": 1,
+    "tests_executed": 10,
+    "positive_tests": 0,
+    "negative_tests": 5,
+    "inconclusive_tests": 5,
+    "unique_findings": 0
+  },
+  "vulnerabilities": []
+}

@@ -1,0 +1,67 @@
+{
+  "project": "SSRF Sentinel",
+  "version": "2.1",
+  "target": "http://127.0.0.1:8080",
+  "scan_status": "COMPLETED",
+  "scan_mode": "VULNERABLE",
+  "scan_duration_seconds": 3.42,
+  "summary": {
+    "endpoints_discovered": 3,
+    "parameters_tested": 1,
+    "tests_executed": 15,
+    "positive_tests": 12,
+    "negative_tests": 3,
+    "inconclusive_tests": 0,
+    "unique_findings": 3
+  },
+  "vulnerabilities": [
+    {
+      "id": "SSRF-001",
+      "name": "In-Band Internal Secret Disclosure",
+      "technique": "Content-Based",
+      "severity": "CRITICAL",
+      "confidence": "LAB_CONFIRMED",
+      "endpoint": "/fetch",
+      "parameter": "url",
+      "description": "Exposed internal secret vault.",
+      "what_happened": "The target endpoint fetched an internal service endpoint and reflected confidential credentials.",
+      "why_it_matters": "Direct unauthorized access to internal credentials compromises the internal infrastructure.",
+      "evidence": ["Marker SSRF_SENTINEL_INTERNAL_ACCESS_2026 matched."],
+      "impact": "Direct credential leakage.",
+      "recommendation": "Block loopback addresses and validate destination URLs.",
+      "recommended_fix": "Enforce strict IP address allowlists and isolate the internal microservice network."
+    },
+    {
+      "id": "SSRF-002",
+      "name": "Blind SSRF via Local Callback",
+      "technique": "Blind / Out-of-Band",
+      "severity": "HIGH",
+      "confidence": "LAB_CONFIRMED",
+      "endpoint": "/fetch",
+      "parameter": "url",
+      "description": "Callback triggered to port 8090.",
+      "what_happened": "The server made an outbound HTTP request to an untrusted external listener.",
+      "why_it_matters": "Attackers can map internal topology and trigger remote interactions.",
+      "evidence": ["Received callback token ssrf_tok_123."],
+      "impact": "Unauthorized internal network requests.",
+      "recommendation": "Restrict application egress.",
+      "recommended_fix": "Configure egress firewalls to disallow outgoing connections to arbitrary ports."
+    },
+    {
+      "id": "SSRF-003",
+      "name": "Time-Based SSRF",
+      "technique": "Time-Based",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "endpoint": "/fetch",
+      "parameter": "url",
+      "description": "Measured 2.0s latency delay.",
+      "what_happened": "Server response time was delayed based on internal backend request processing.",
+      "why_it_matters": "Enables blind side-channel reconnaissance and internal port scanning.",
+      "evidence": ["Delta: 2.01s across 3 iterations."],
+      "impact": "Internal port scanning.",
+      "recommendation": "Configure 2s timeouts.",
+      "recommended_fix": "Set strict connect and read timeouts (e.g. 2000ms) on backend HTTP clients."
+    }
+  ]
+}

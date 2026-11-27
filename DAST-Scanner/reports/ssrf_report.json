@@ -1,6 +1,10 @@
 {
   "project": "SSRF Sentinel",
+  "version": "2.1",
   "target": "http://127.0.0.1:8080",
+  "scan_mode": "VULNERABLE",
+  "scan_date": "2026-11-27 10:23:49 UTC",
+  "scan_duration_seconds": 13.55,
   "scan_status": "COMPLETED",
   "summary": {
     "endpoints_discovered": 5,
@@ -11,6 +15,17 @@
     "inconclusive_tests": 0,
     "unique_findings": 7
   },
+  "endpoints": [
+    "/fetch",
+    "/",
+    "/health",
+    "/fetch-secure",
+    "/redirect"
+  ],
+  "parameters": [
+    "url",
+    "mode"
+  ],
   "vulnerabilities": [
     {
       "id": "SSRF-001",
@@ -21,6 +36,9 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The application accepts a user-controlled URL and fetches a restricted internal resource, returning confidential content directly in the HTTP response.",
+      "what_happened": "The application accepts a user-controlled URL and fetches a restricted internal resource, returning confidential content directly in the HTTP response.",
+      "impact": "An attacker can directly read sensitive internal files, API tokens, and private services that are not exposed to the public internet.",
+      "why_it_matters": "An attacker can directly read sensitive internal files, API tokens, and private services that are not exposed to the public internet.",
       "evidence": [
         "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Mock",
         "Confirmed internal verification marker: SSRF_SENTINEL_INTERNAL_ACCESS_2026",
@@ -28,8 +46,8 @@
         "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Core",
         "Disclosed internal header: X-Resource-ID=admin-config-vault"
       ],
-      "impact": "An attacker can directly read sensitive internal files, API tokens, and private services that are not exposed to the public internet.",
-      "recommendation": "Enforce a strict domain and IP allowlist on outgoing requests. Block loopback (127.0.0.0/8) and private IP ranges at the application and firewall level."
+      "recommendation": "Enforce a strict domain and IP allowlist on outgoing requests. Block loopback (127.0.0.0/8) and private IP ranges at the application and firewall level.",
+      "recommended_fix": "Enforce a strict domain and IP allowlist on outgoing requests. Block loopback (127.0.0.0/8) and private IP ranges at the application and firewall level."
     },
     {
       "id": "SSRF-002",
@@ -40,6 +58,9 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The URL validation parser fails to normalize alternative host notations (e.g., decimal DWORD, octal, hex, shorthand, IPv6), allowing attackers to bypass standard loopback string filters.",
+      "what_happened": "The URL validation parser fails to normalize alternative host notations (e.g., decimal DWORD, octal, hex, shorthand, IPv6), allowing attackers to bypass standard loopback string filters.",
+      "impact": "Bypasses naive blacklist filters that only match '127.0.0.1' or 'localhost', granting access to internal resources.",
+      "why_it_matters": "Bypasses naive blacklist filters that only match '127.0.0.1' or 'localhost', granting access to internal resources.",
       "evidence": [
         "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Mock",
         "Confirmed internal verification marker: SSRF_SENTINEL_INTERNAL_ACCESS_2026",
@@ -47,8 +68,8 @@
         "Probe 'Shorthand IP Representation' (PL-BYPASS-SHORT-002) accessed internal resource via parameter 'url'.",
         "Probe 'Octal IP Representation' (PL-BYPASS-OCT-003) accessed internal resource via parameter 'url'."
       ],
-      "impact": "Bypasses naive blacklist filters that only match '127.0.0.1' or 'localhost', granting access to internal resources.",
-      "recommendation": "Resolve the hostname or IP to its canonical socket address prior to validation, and evaluate the resolved IP address against an allowlist."
+      "recommendation": "Resolve the hostname or IP to its canonical socket address prior to validation, and evaluate the resolved IP address against an allowlist.",
+      "recommended_fix": "Resolve the hostname or IP to its canonical socket address prior to validation, and evaluate the resolved IP address against an allowlist."
     },
     {
       "id": "SSRF-003",
@@ -59,14 +80,17 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The application's HTTP client automatically follows HTTP 301/302 redirects without re-validating the destination target, allowing an attacker to pivot into internal services.",
+      "what_happened": "The application's HTTP client automatically follows HTTP 301/302 redirects without re-validating the destination target, allowing an attacker to pivot into internal services.",
+      "impact": "Bypasses initial URL validation checks by bouncing through external or open redirect endpoints to reach protected internal hosts.",
+      "why_it_matters": "Bypasses initial URL validation checks by bouncing through external or open redirect endpoints to reach protected internal hosts.",
       "evidence": [
         "Disclosed internal header: X-Internal-Service=SSRF-Sentinel-Mock",
         "Confirmed internal verification marker: SSRF_SENTINEL_INTERNAL_ACCESS_2026",
         "Probe 'Internal HTTP 302 Redirect to Secret' (PL-REDIR-INT-001) accessed internal resource via parameter 'url'.",
         "Probe 'Public Application Open Redirect Bounce' (PL-REDIR-PUB-002) accessed internal resource via parameter 'url'."
       ],
-      "impact": "Bypasses initial URL validation checks by bouncing through external or open redirect endpoints to reach protected internal hosts.",
-      "recommendation": "Disable automatic redirect following or strictly re-validate every redirect Location header against the authorized allowlist before following."
+      "recommendation": "Disable automatic redirect following or strictly re-validate every redirect Location header against the authorized allowlist before following.",
+      "recommended_fix": "Disable automatic redirect following or strictly re-validate every redirect Location header against the authorized allowlist before following."
     },
     {
       "id": "SSRF-004",
@@ -77,6 +101,9 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The application executes server-side requests to internal endpoints and reveals internal state through status codes (HTTP 204), custom headers, or response lengths.",
+      "what_happened": "The application executes server-side requests to internal endpoints and reveals internal state through status codes (HTTP 204), custom headers, or response lengths.",
+      "impact": "Enables internal port scanning, service discovery, and mapping of active internal infrastructure.",
+      "why_it_matters": "Enables internal port scanning, service discovery, and mapping of active internal infrastructure.",
       "evidence": [
         "Target returned HTTP 204 No Content confirming internal request execution.",
         "Internal header marker 'SSRF_HEADER_ONLY_FLAG' discovered in response headers.",
@@ -84,8 +111,8 @@
         "Application returned generic internal success confirmation distinct from error baseline.",
         "Internal policy filter suppression marker '[CONTENT_SUPPRESSED_BY_POLICY]' verified."
       ],
-      "impact": "Enables internal port scanning, service discovery, and mapping of active internal infrastructure.",
-      "recommendation": "Do not forward downstream HTTP status codes or custom headers to the user. Always return uniform application responses."
+      "recommendation": "Do not forward downstream HTTP status codes or custom headers to the user. Always return uniform application responses.",
+      "recommended_fix": "Do not forward downstream HTTP status codes or custom headers to the user. Always return uniform application responses."
     },
     {
       "id": "SSRF-005",
@@ -96,11 +123,14 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.",
-      "evidence": [
-        "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_fcc1c90bb3ef03ec' from IP 127.0.0.1 at 2026-11-27T07:11:23.418Z (Poll time: 0.003s)."
-      ],
+      "what_happened": "The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.",
       "impact": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.",
-      "recommendation": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations."
+      "why_it_matters": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.",
+      "evidence": [
+        "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_7084a9bdcbfa5ffb' from IP 127.0.0.1 at 2026-11-27T10:23:40.760Z (Poll time: 0.002s)."
+      ],
+      "recommendation": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations.",
+      "recommended_fix": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations."
     },
     {
       "id": "SSRF-006",
@@ -111,12 +141,15 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The application induces measurable, repeatable response delays when fetching slow or delayed internal resources.",
+      "what_happened": "The application induces measurable, repeatable response delays when fetching slow or delayed internal resources.",
+      "impact": "Enables attackers to infer whether internal network ports or endpoints are open based on round-trip latency differentials.",
+      "why_it_matters": "Enables attackers to infer whether internal network ports or endpoints are open based on round-trip latency differentials.",
       "evidence": [
-        "Fast probe median: 0.018s [0.00511770008597523, 0.018052600091323256, 0.024165400071069598] | Delayed probe median: 2.026s [2.0262835000175983, 2.012820399948396, 2.0289347000652924] | Delta: 2.008s (Threshold: 1.200s)",
+        "Fast probe median: 0.005s [0.005052399937994778, 0.0022222999250516295, 0.006371500086970627] | Delayed probe median: 2.017s [2.013288800022565, 2.020704000024125, 2.016581099946052] | Delta: 2.012s (Threshold: 1.200s)",
         "Confirmed internal delayed execution marker 'SSRF_TIME_DELAYED_SUCCESS' in delayed response."
       ],
-      "impact": "Enables attackers to infer whether internal network ports or endpoints are open based on round-trip latency differentials.",
-      "recommendation": "Configure strict connection and read timeouts (e.g. 2.0 seconds or less) on all server-side HTTP clients."
+      "recommendation": "Configure strict connection and read timeouts (e.g. 2.0 seconds or less) on all server-side HTTP clients.",
+      "recommended_fix": "Configure strict connection and read timeouts (e.g. 2.0 seconds or less) on all server-side HTTP clients."
     },
     {
       "id": "SSRF-007",
@@ -127,12 +160,15 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The application returns distinctly different HTTP statuses, lengths, or headers when evaluating downstream conditional queries.",
+      "what_happened": "The application returns distinctly different HTTP statuses, lengths, or headers when evaluating downstream conditional queries.",
+      "impact": "Allows attackers to infer internal data or configuration states through systematic true/false condition testing.",
+      "why_it_matters": "Allows attackers to infer internal data or configuration states through systematic true/false condition testing.",
       "evidence": [
         "TRUE: HTTP 200 (303 bytes) | FALSE: HTTP 404 (88 bytes) | Length Delta: 215 bytes",
         "Boolean verification marker 'SSRF_BOOLEAN_TRUE_VERIFIED' matched with divergent status (200 vs 404)."
       ],
-      "impact": "Allows attackers to infer internal data or configuration states through systematic true/false condition testing.",
-      "recommendation": "Ensure the application returns uniform HTTP status codes, body lengths, and error responses regardless of downstream condition evaluations."
+      "recommendation": "Ensure the application returns uniform HTTP status codes, body lengths, and error responses regardless of downstream condition evaluations.",
+      "recommended_fix": "Ensure the application returns uniform HTTP status codes, body lengths, and error responses regardless of downstream condition evaluations."
     }
   ]
 }

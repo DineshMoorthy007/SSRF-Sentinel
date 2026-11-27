@@ -1,4 +1,5 @@
 import time
+import os
 import sys
 from typing import List, Dict, Any
 from core.http_client import HTTPClient
@@ -6,6 +7,7 @@ from engine.endpoint_discovery import EndpointDiscovery
 from engine.parameter_analyzer import ParameterAnalyzer
 from engine.ssrf_detector import SSRFDetector
 from reporting.json_reporter import JSONReporter
+from reporting.html_reporter import HTMLReporter
 
 from config import (
     PROJECT_NAME,
@@ -14,10 +16,39 @@ from config import (
 )
 
 
+class ReportPaths(str):
+    """
+    Backwards-compatible report path container.
+    Acts as a str (pointing to the primary JSON report) for legacy integrations,
+    while providing dictionary access (paths['json'], paths['html']) and attributes
+    (paths.json, paths.html) for unified multi-format reporting.
+    """
+    def __new__(cls, json_path: str, html_path: str):
+        obj = super().__new__(cls, json_path)
+        obj.json = json_path
+        obj.html = html_path
+        return obj
+
+    def __getitem__(self, item):
+        if item == "json":
+            return self.json
+        elif item == "html":
+            return self.html
+        return super().__getitem__(item)
+
+    def get(self, item, default=None):
+        if item == "json":
+            return self.json
+        elif item == "html":
+            return self.html
+        return default
+
+
 class Scanner:
     """
     Main DAST Scanner orchestrator for SSRF Sentinel.
     Integrates directly and exclusively with the actual C++ SSRF Target Application.
+    Generates unified JSON and HTML vulnerability reports.
     """
 
     def __init__(self, mode: str = "vulnerable"):
@@ -28,6 +59,7 @@ class Scanner:
         self.parameter_analyzer = ParameterAnalyzer()
         self.ssrf_detector = SSRFDetector(self.client)
         self.json_reporter = JSONReporter()
+        self.html_reporter = HTMLReporter()
 
         self.endpoints = []
         self.parameters = []
@@ -82,19 +114,34 @@ class Scanner:
         self.findings = self.ssrf_detector.scan(self.parameters, mode=self.mode)
         self.ssrf_detector.display_results()
 
-    def generate_reports(self, filename: str = "ssrf_report.json") -> str:
-        print("\n[INFO] Generating scan reports...")
+    def generate_reports(self, filename: str = "ssrf_report.json") -> Dict[str, str]:
+        print("\n[INFO] Generating scan reports (JSON & HTML)...")
         duration = time.time() - self.start_time
-        report_path = self.json_reporter.generate_report(
+
+        # 1. Primary JSON report
+        json_path = self.json_reporter.generate_report(
             endpoints=self.endpoints,
             parameters=self.parameters,
             findings=self.findings,
             total_tests=len(self.findings),
             scan_duration_seconds=duration,
-            output_filename=filename
+            output_filename=filename,
+            scan_mode=self.mode
         )
-        print("\n[SUCCESS] Scan reporting completed.")
-        return report_path
+
+        # 2. Synchronized HTML report from the exact same scan data
+        html_filename = os.path.splitext(filename)[0] + ".html"
+        html_path = self.html_reporter.generate_report(
+            report_data=self.json_reporter.last_report_data,
+            output_filename=html_filename,
+            raw_probes=self.findings
+        )
+
+        print(f"\n[SUCCESS] Reporting completed:")
+        print(f"  - JSON Report : {json_path}")
+        print(f"  - HTML Report : {html_path}")
+
+        return ReportPaths(json_path=json_path, html_path=html_path)
 
     def close(self):
         if hasattr(self.ssrf_detector, "blind_detector") and hasattr(self.ssrf_detector.blind_detector, "close"):

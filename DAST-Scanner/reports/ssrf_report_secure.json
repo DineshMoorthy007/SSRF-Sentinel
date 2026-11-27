@@ -1,6 +1,10 @@
 {
   "project": "SSRF Sentinel",
+  "version": "2.1",
   "target": "http://127.0.0.1:8080",
+  "scan_mode": "SECURE",
+  "scan_date": "2026-11-27 10:14:25 UTC",
+  "scan_duration_seconds": 7.34,
   "scan_status": "COMPLETED",
   "summary": {
     "endpoints_discovered": 5,
@@ -11,6 +15,17 @@
     "inconclusive_tests": 0,
     "unique_findings": 1
   },
+  "endpoints": [
+    "/fetch",
+    "/",
+    "/health",
+    "/fetch-secure",
+    "/redirect"
+  ],
+  "parameters": [
+    "mode",
+    "url"
+  ],
   "vulnerabilities": [
     {
       "id": "SSRF-001",
@@ -21,11 +36,14 @@
       "endpoint": "/fetch",
       "parameter": "url",
       "description": "The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.",
-      "evidence": [
-        "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_e13561f7836751bb' from IP 127.0.0.1 at 2026-11-27T07:11:36.870Z (Poll time: 0.004s)."
-      ],
+      "what_happened": "The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.",
       "impact": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.",
-      "recommendation": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations."
+      "why_it_matters": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.",
+      "evidence": [
+        "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_8eddc1428cb44fac' from IP 127.0.0.1 at 2026-11-27T10:14:23.121Z (Poll time: 0.001s)."
+      ],
+      "recommendation": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations.",
+      "recommended_fix": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations."
     }
   ]
 }

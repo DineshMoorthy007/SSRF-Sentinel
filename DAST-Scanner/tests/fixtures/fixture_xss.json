@@ -1,0 +1,14 @@
+{
+  "project": "<script>alert('xss-project')</script>",
+  "target": "http://127.0.0.1:8080/<img src=x onerror=alert(1)>",
+  "vulnerabilities": [
+    {
+      "id": "<b>SSRF-XSS</b>",
+      "name": "<script>alert('xss-name')</script>",
+      "description": "<style>body{display:none}</style>",
+      "evidence": ["<script>document.cookie</script>"],
+      "impact": "<a href=\"javascript:alert(1)\">click</a>",
+      "recommendation": "<b>Sanitize</b> input."
+    }
+  ]
+}

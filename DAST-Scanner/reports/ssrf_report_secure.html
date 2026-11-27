@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SSRF Security Assessment Report - SSRF Sentinel</title>
+  <style>
+    /* =====================================================================
+       SSRF Sentinel Professional Security Report - Self-Contained Styles
+       ===================================================================== */
+    :root {
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+
+      --color-bg: #f8fafc;
+      --color-card-bg: #ffffff;
+      --color-border: #e2e8f0;
+      --color-border-subtle: #edf2f7;
+
+      --color-text-main: #0f172a;
+      --color-text-muted: #475569;
+      --color-text-light: #64748b;
+
+      --color-primary: #0f172a;
+      --color-accent: #2563eb;
+      --color-accent-light: #eff6ff;
+
+      --sev-critical: #dc2626;
+      --sev-critical-bg: #fef2f2;
+      --sev-critical-border: #fecaca;
+
+      --sev-high: #ea580c;
+      --sev-high-bg: #fff7ed;
+      --sev-high-border: #fed7aa;
+
+      --sev-medium: #d97706;
+      --sev-medium-bg: #fffbeb;
+      --sev-medium-border: #fde68a;
+
+      --sev-low: #ca8a04;
+      --sev-low-bg: #fefce8;
+      --sev-low-border: #fef08a;
+
+      --sev-info: #0284c7;
+      --sev-info-bg: #f0f9ff;
+      --sev-info-border: #bae6fd;
+
+      --status-safe: #16a34a;
+      --status-safe-bg: #f0fdf4;
+      --status-safe-border: #bbf7d0;
+
+      --conf-lab: #4f46e5;
+      --conf-lab-bg: #eef2ff;
+      --conf-lab-border: #c7d2fe;
+
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--color-bg);
+      color: var(--color-text-main);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      padding: 30px 20px;
+    }
+
+    .report-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* -------------------------------------------------------------
+       Header & Branding
+       ------------------------------------------------------------- */
+    .report-header {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo-svg {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
+    }
+
+    .brand-title-area h1 {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-framework-ver {
+      font-size: 0.72rem;
+      background: var(--color-border);
+      color: var(--color-text-muted);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .brand-title-area p {
+      font-size: 0.88rem;
+      color: var(--color-text-light);
+      margin-top: 2px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+    }
+
+    .btn-secondary {
+      background: #ffffff;
+      border-color: var(--color-border);
+      color: var(--color-text-main);
+    }
+
+    .btn-secondary:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .btn-primary {
+      background: var(--color-accent);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    /* -------------------------------------------------------------
+       Target Metadata Strip
+       ------------------------------------------------------------- */
+    .meta-strip {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      font-size: 0.85rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .meta-label {
+      color: var(--color-text-light);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 3px;
+      font-weight: 600;
+    }
+
+    .meta-value {
+      font-weight: 600;
+      color: var(--color-text-main);
+      word-break: break-all;
+    }
+
+    .meta-value code {
+      font-family: var(--font-mono);
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
+
+    /* -------------------------------------------------------------
+       Section Titles & Layout
+       ------------------------------------------------------------- */
+    .section-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title::before {
+      content: "";
+      width: 4px;
+      height: 16px;
+      background: var(--color-accent);
+      border-radius: 2px;
+    }
+
+    .section-desc {
+      font-size: 0.88rem;
+      color: var(--color-text-muted);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .mb-6 { margin-bottom: 24px; }
+    .mb-8 { margin-bottom: 32px; }
+
+    /* -------------------------------------------------------------
+       Executive Summary & Metric Cards
+       ------------------------------------------------------------- */
+    .summary-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .stat-card {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--color-border);
+    }
+
+    .stat-card.alert::before { background: var(--sev-high); }
+    .stat-card.danger::before { background: var(--sev-critical); }
+    .stat-card.success::before { background: var(--status-safe); }
+    .stat-card.neutral::before { background: var(--color-accent); }
+
+    .stat-label {
+      font-size: 0.74rem;
+      color: var(--color-text-light);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+
+    .stat-number {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: var(--color-text-main);
+      line-height: 1.1;
+    }
+
+    .stat-card.alert .stat-number { color: var(--sev-high); }
+    .stat-card.danger .stat-number { color: var(--sev-critical); }
+    .stat-card.success .stat-number { color: var(--status-safe); }
+
+    .summary-note {
+      font-size: 0.82rem;
+      color: var(--color-text-muted);
+      background: #f1f5f9;
+      border-left: 3px solid #94a3b8;
+      padding: 8px 14px;
+      border-radius: 0 4px 4px 0;
+      margin-top: 6px;
+    }
+
+    /* -------------------------------------------------------------
+       Security Overview & Posture
+       ------------------------------------------------------------- */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 800px) {
+      .overview-grid { grid-template-columns: 1fr; }
+    }
+
+    .overview-card {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .overview-card h3 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+      color: var(--color-primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .dist-bar-track {
+      height: 10px;
+      border-radius: 5px;
+      background: #e2e8f0;
+      display: flex;
+      overflow: hidden;
+      margin-bottom: 14px;
+    }
+
+    .dist-bar-seg {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .legend-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.78rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 500;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .posture-banner {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .posture-banner.vuln-found {
+      border-left: 5px solid var(--sev-critical);
+      background: var(--sev-critical-bg);
+    }
+
+    .posture-banner.safe {
+      border-left: 5px solid var(--status-safe);
+      background: var(--status-safe-bg);
+    }
+
+    .posture-icon {
+      font-size: 1.8rem;
+      line-height: 1;
+    }
+
+    .posture-text h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .posture-banner.vuln-found .posture-text h4 { color: var(--sev-critical); }
+    .posture-banner.safe .posture-text h4 { color: var(--status-safe); }
+
+    .posture-text p {
+      font-size: 0.85rem;
+      color: var(--color-text-muted);
+    }
+
+    /* -------------------------------------------------------------
+       Vulnerability Findings (Interactive Cards)
+       ------------------------------------------------------------- */
+    .filter-toolbar {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .search-input-wrap {
+      flex: 1;
+      min-width: 240px;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 7px 12px 7px 32px;
+      font-size: 0.85rem;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      outline: none;
+      background: #ffffff;
+      font-family: inherit;
+    }
+
+    .search-input:focus {
+      border-color: var(--color-accent);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+    }
+
+    .search-icon-svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 14px;
+      height: 14px;
+      fill: var(--color-text-light);
+    }
+
+    .filter-pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      background: #f1f5f9;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-muted);
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 0.76rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .filter-btn:hover { background: #e2e8f0; }
+
+    .filter-btn.active {
+      background: var(--color-primary);
+      color: #ffffff;
+      border-color: var(--color-primary);
+    }
+
+    .btn-toggle-all {
+      font-size: 0.78rem;
+      color: var(--color-accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn-toggle-all:hover { text-decoration: underline; }
+
+    .vuln-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .vuln-card {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      transition: border-color 0.15s ease;
+    }
+
+    .vuln-card:hover {
+      border-color: #cbd5e1;
+    }
+
+    .vuln-card-header {
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: #ffffff;
+      border-bottom: 1px solid transparent;
+      transition: background 0.15s ease;
+    }
+
+    .vuln-card.expanded .vuln-card-header {
+      background: #fafafa;
+      border-bottom-color: var(--color-border);
+    }
+
+    .vuln-header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .vuln-id-badge {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      background: #f1f5f9;
+      color: #1e293b;
+      padding: 3px 8px;
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+    }
+
+    .vuln-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--color-primary);
+    }
+
+    .vuln-header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Badges */
+    .badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .badge-critical { background: var(--sev-critical-bg); color: var(--sev-critical); border: 1px solid var(--sev-critical-border); }
+    .badge-high { background: var(--sev-high-bg); color: var(--sev-high); border: 1px solid var(--sev-high-border); }
+    .badge-medium { background: var(--sev-medium-bg); color: var(--sev-medium); border: 1px solid var(--sev-medium-border); }
+    .badge-low { background: var(--sev-low-bg); color: var(--sev-low); border: 1px solid var(--sev-low-border); }
+    .badge-info { background: var(--sev-info-bg); color: var(--sev-info); border: 1px solid var(--sev-info-border); }
+
+    .badge-conf {
+      background: var(--conf-lab-bg);
+      color: var(--conf-lab);
+      border: 1px solid var(--conf-lab-border);
+    }
+
+    .badge-technique {
+      background: #f1f5f9;
+      color: #334155;
+      border: 1px solid var(--color-border);
+      text-transform: none;
+      font-weight: 600;
+    }
+
+    .chevron-icon {
+      width: 18px;
+      height: 18px;
+      fill: var(--color-text-light);
+      transition: transform 0.2s ease;
+    }
+
+    .vuln-card.expanded .chevron-icon {
+      transform: rotate(180deg);
+    }
+
+    /* Card Body */
+    .vuln-card-body {
+      padding: 20px 24px;
+      display: none;
+      font-size: 0.88rem;
+    }
+
+    .vuln-card.expanded .vuln-card-body {
+      display: block;
+    }
+
+    .target-aff-bar {
+      background: #f8fafc;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      margin-bottom: 18px;
+      display: flex;
+      gap: 24px;
+      font-size: 0.82rem;
+      flex-wrap: wrap;
+    }
+
+    .target-aff-item span {
+      color: var(--color-text-light);
+      font-weight: 500;
+      margin-right: 4px;
+    }
+
+    .target-aff-item code {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--color-primary);
+    }
+
+    .vuln-detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    @media (max-width: 800px) {
+      .vuln-detail-grid { grid-template-columns: 1fr; }
+    }
+
+    .detail-block {
+      background: #ffffff;
+      border: 1px solid #f1f5f9;
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+
+    .detail-heading {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-light);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .detail-content {
+      color: var(--color-text-main);
+      line-height: 1.5;
+    }
+
+    /* Evidence Box */
+    .evidence-box {
+      background: #0f172a;
+      color: #f8fafc;
+      border-radius: 6px;
+      padding: 14px 18px;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      margin-bottom: 18px;
+      overflow-x: auto;
+    }
+
+    .evidence-box .evidence-heading {
+      color: #94a3b8;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .evidence-box ul {
+      list-style-type: none;
+    }
+
+    .evidence-box li {
+      padding: 3px 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .evidence-box li::before {
+      content: "›";
+      color: #38bdf8;
+      font-weight: 700;
+    }
+
+    /* Fix Box */
+    .fix-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      padding: 12px 16px;
+      color: #166534;
+    }
+
+    .fix-box .fix-heading {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+      color: #15803d;
+    }
+
+    .no-findings-box {
+      background: var(--status-safe-bg);
+      border: 1px solid var(--status-safe-border);
+      border-radius: var(--radius);
+      padding: 32px 24px;
+      text-align: center;
+      color: var(--status-safe);
+    }
+
+    .no-findings-box h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .no-findings-box p {
+      color: var(--color-text-muted);
+      font-size: 0.88rem;
+    }
+
+    /* -------------------------------------------------------------
+       Detection Techniques Table / Grid
+       ------------------------------------------------------------- */
+    .technique-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .tech-card {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .tech-card h4 {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      margin-bottom: 6px;
+    }
+
+    .tech-card p {
+      font-size: 0.78rem;
+      color: var(--color-text-light);
+      margin-bottom: 12px;
+      line-height: 1.4;
+      min-height: 44px;
+    }
+
+    .tech-stats {
+      border-top: 1px solid var(--color-border-subtle);
+      padding-top: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      font-size: 0.75rem;
+    }
+
+    .tech-stat-item {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .tech-stat-label { color: var(--color-text-light); }
+    .tech-stat-val { font-weight: 700; }
+    .tech-stat-val.pos { color: var(--sev-high); }
+
+    /* -------------------------------------------------------------
+       Remediation Plan
+       ------------------------------------------------------------- */
+    .remediation-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 800px) {
+      .remediation-list { grid-template-columns: 1fr; }
+    }
+
+    .remediation-item {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .remediation-item h4 {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--color-primary);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .remediation-item p {
+      font-size: 0.84rem;
+      color: var(--color-text-muted);
+      line-height: 1.5;
+    }
+
+    /* -------------------------------------------------------------
+       Scan Details & Footer
+       ------------------------------------------------------------- */
+    .scan-details-card {
+      background: var(--color-card-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 18px 24px;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 30px;
+    }
+
+    .details-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .details-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--color-border-subtle);
+    }
+
+    .details-table tr:last-child td { border-bottom: none; }
+    .details-table td:first-child {
+      font-weight: 600;
+      color: var(--color-text-muted);
+      width: 25%;
+    }
+
+    .report-footer {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--color-text-light);
+      padding: 16px 0;
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* -------------------------------------------------------------
+       Print & PDF Optimization
+       ------------------------------------------------------------- */
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+        color: #000000;
+      }
+
+      .header-actions,
+      .filter-toolbar,
+      .summary-note {
+        display: none !important;
+      }
+
+      .report-container {
+        max-width: 100%;
+      }
+
+      .report-header,
+      .meta-strip,
+      .overview-card,
+      .vuln-card,
+      .tech-card,
+      .remediation-item,
+      .scan-details-card {
+        box-shadow: none !important;
+        border: 1px solid #ccc !important;
+        break-inside: avoid;
+      }
+
+      .vuln-card-body {
+        display: block !important;
+      }
+
+      .chevron-icon { display: none !important; }
+
+      .evidence-box {
+        background: #f1f5f9 !important;
+        color: #000000 !important;
+        border: 1px solid #cbd5e1 !important;
+      }
+
+      .evidence-box .evidence-heading {
+        color: #475569 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="report-container">
+
+    <!-- =========================================================
+         SECTION 1: REPORT HEADER
+         ========================================================= -->
+    <header class="report-header">
+      <div class="brand-group">
+        <svg class="brand-logo-svg" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="48" height="48" rx="10" fill="#0F172A"/>
+          <path d="M24 8L36 14V23C36 30.5 30.9 37.5 24 40C17.1 37.5 12 30.5 12 23V14L24 8Z" fill="#1E293B" stroke="#2563EB" stroke-width="2"/>
+          <circle cx="24" cy="24" r="5" fill="#38BDF8"/>
+          <circle cx="24" cy="24" r="9" stroke="#38BDF8" stroke-dasharray="2 2" stroke-width="1.5"/>
+        </svg>
+        <div class="brand-title-area">
+          <h1>SSRF Sentinel <span class="badge-framework-ver">v2.1</span></h1>
+          <p>SSRF Security Assessment Report</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-secondary" onclick="window.print()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+            <rect x="6" y="14" width="12" height="8"></rect>
+          </svg>
+          Print / PDF
+        </button>
+
+        <button class="btn btn-primary" id="btnDownloadJson" onclick="downloadJsonReport()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Download JSON
+        </button>
+      </div>
+    </header>
+
+    <!-- Metadata Strip -->
+    <div class="meta-strip">
+      <div class="meta-item">
+        <span class="meta-label">Target URL</span>
+        <span class="meta-value"><code>http://127.0.0.1:8080</code></span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Scan Evaluation Mode</span>
+        <span class="meta-value">SECURE</span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Scan Status</span>
+        <span class="meta-value"><span class="badge badge-info" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;">COMPLETED</span></span>
+      </div>
+      <div class="meta-item">
+        <span class="meta-label">Scan Completed At</span>
+        <span class="meta-value">2026-11-27 10:14:25 UTC</span>
+      </div>
+    </div>
+
+    <!-- =========================================================
+         SECTION 2: EXECUTIVE SUMMARY
+         ========================================================= -->
+    <section class="mb-8">
+      <h2 class="section-title">Executive Summary</h2>
+      <p class="section-desc">The dynamic security assessment identified active Server-Side Request Forgery (SSRF) vulnerabilities in the target application (http://127.0.0.1:8080). A total of 1 security probes succeeded, confirming 1 distinct vulnerability classes including In-Band internal disclosures, alternative IP representation filter bypasses, redirect chains, and out-of-band interactions. Immediate remediation is required to restrict unauthorized server-side network egress.</p>
+
+      <div class="summary-card-grid">
+        <div class="stat-card neutral">
+          <div class="stat-label">Endpoints Discovered</div>
+          <div class="stat-number">5</div>
+        </div>
+        <div class="stat-card neutral">
+          <div class="stat-label">Parameters Tested</div>
+          <div class="stat-number">2</div>
+        </div>
+        <div class="stat-card neutral">
+          <div class="stat-label">Tests Executed</div>
+          <div class="stat-number">25</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="stat-label">Positive Test Hits</div>
+          <div class="stat-number">1</div>
+        </div>
+        <div class="stat-card success">
+          <div class="stat-label">Negative Controls</div>
+          <div class="stat-number">24</div>
+        </div>
+        <div class="stat-card neutral">
+          <div class="stat-label">Inconclusive Tests</div>
+          <div class="stat-number">0</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="stat-label">Unique Findings</div>
+          <div class="stat-number">1</div>
+        </div>
+      </div>
+      <div class="summary-note">
+        <strong>Methodology Note:</strong> Positive test hits measure individual security probe triggers across all candidate parameters. These are grouped into <strong>1 unique vulnerability findings</strong> below to eliminate probe-count inflation.
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECTION 3: SECURITY OVERVIEW & POSTURE
+         ========================================================= -->
+    <section class="mb-8">
+      <h2 class="section-title">Security Overview</h2>
+
+      
+      <div class="posture-banner vuln-found">
+        <div class="posture-icon">&#9888;</div>
+        <div class="posture-text">
+          <h4>Vulnerabilities Detected &bull; HIGH RISK</h4>
+          <p>The assessment identified 1 unique SSRF vulnerability finding(s). The application can be coerced into accessing unauthorized internal endpoints or executing outbound requests. Immediate remediation is advised.</p>
+        </div>
+      </div>
+
+      <div class="overview-grid">
+        <!-- Severity Distribution -->
+        <div class="overview-card">
+          <h3>
+            <span>Severity Distribution</span>
+            <span style="font-size: 0.8rem; font-weight: 500; color: var(--color-text-light);">1 Total Findings</span>
+          </h3>
+          <div class="dist-bar-track">
+            <div class="dist-bar-seg" style="width: 100.0%; background: var(--sev-high);" title="HIGH: 1 (100.0%)"></div>
+          </div>
+          <div class="legend-row">
+            <div class="legend-item"><span class="legend-dot" style="background: var(--sev-critical);"></span> Critical: <strong>0</strong></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--sev-high);"></span> High: <strong>1</strong></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--sev-medium);"></span> Medium: <strong>0</strong></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--sev-low);"></span> Low: <strong>0</strong></div>
+          </div>
+        </div>
+
+        <!-- Confidence Distribution -->
+        <div class="overview-card">
+          <h3>
+            <span>Detection Confidence Distribution</span>
+            <span style="font-size: 0.8rem; font-weight: 500; color: var(--color-text-light);">Independent Metrics</span>
+          </h3>
+          <div class="dist-bar-track">
+            <div class="dist-bar-seg" style="width: 100.0%; background: var(--conf-lab);" title="LAB_CONFIRMED: 1 (100.0%)"></div>
+          </div>
+          <div class="legend-row">
+            <div class="legend-item"><span class="legend-dot" style="background: var(--conf-lab);"></span> Lab Confirmed: <strong>1</strong></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--sev-high);"></span> High Confidence: <strong>0</strong></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--sev-medium);"></span> Medium: <strong>0</strong></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--sev-info);"></span> Low / Inconclusive: <strong>0</strong></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECTION 4: VULNERABILITY FINDINGS
+         ========================================================= -->
+    <section class="mb-8" id="findingsSection">
+      <h2 class="section-title">Vulnerability Findings</h2>
+      <p class="section-desc">Detailed analysis of every distinct SSRF vulnerability identified during scanning. Each finding aggregates supporting technical probe evidence.</p>
+
+      <!-- Filter and Search Toolbar -->
+      <div class="filter-toolbar">
+        <div class="search-input-wrap">
+          <svg class="search-icon-svg" viewBox="0 0 24 24">
+            <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+          </svg>
+          <input type="text" id="searchInput" class="search-input" placeholder="Search findings by name, endpoint, ID, or parameter..." oninput="filterFindings()">
+        </div>
+
+        <div class="filter-pills">
+          <button class="filter-btn active" data-filter="ALL" onclick="setSeverityFilter('ALL')">All (1)</button>
+          <button class="filter-btn" data-filter="CRITICAL" onclick="setSeverityFilter('CRITICAL')">Critical (0)</button>
+          <button class="filter-btn" data-filter="HIGH" onclick="setSeverityFilter('HIGH')">High (1)</button>
+          <button class="filter-btn" data-filter="MEDIUM" onclick="setSeverityFilter('MEDIUM')">Medium (0)</button>
+          <button class="filter-btn" data-filter="LOW" onclick="setSeverityFilter('LOW')">Low (0)</button>
+        </div>
+
+        <button class="btn-toggle-all" id="btnToggleAll" onclick="toggleAllCards()">Collapse All</button>
+      </div>
+
+      <!-- Vulnerability Cards Container -->
+      <div class="vuln-list" id="vulnListContainer">
+        
+        <div class="vuln-card expanded" data-severity="HIGH" data-search-text="ssrf-001 blind ssrf via local callback /fetch url blind / out-of-band the application triggers an outbound http request to a dedicated local callback listener without reflecting the response content to the user.">
+          <div class="vuln-card-header" onclick="toggleCard(this)">
+            <div class="vuln-header-left">
+              <span class="vuln-id-badge">SSRF-001</span>
+              <span class="vuln-title">Blind SSRF via Local Callback</span>
+            </div>
+            <div class="vuln-header-right">
+              <span class="badge badge-high">HIGH</span>
+              <span class="badge badge-conf">LAB_CONFIRMED</span>
+              <span class="badge badge-technique">Blind / Out-of-Band</span>
+              <svg class="chevron-icon" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+            </div>
+          </div>
+
+          <div class="vuln-card-body">
+            <div class="target-aff-bar">
+              <div class="target-aff-item"><span>Affected Endpoint:</span> <code>/fetch</code></div>
+              <div class="target-aff-item"><span>Vulnerable Parameter:</span> <code>url</code></div>
+              <div class="target-aff-item"><span>Detection Technique:</span> <strong>Blind / Out-of-Band</strong></div>
+            </div>
+
+            <div class="vuln-detail-grid">
+              <div class="detail-block">
+                <div class="detail-heading">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  What Happened?
+                </div>
+                <div class="detail-content">The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.</div>
+              </div>
+
+              <div class="detail-block">
+                <div class="detail-heading">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Why Is It A Problem?
+                </div>
+                <div class="detail-content">Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.</div>
+              </div>
+            </div>
+
+            <div class="evidence-box">
+              <div class="evidence-heading">Observed Technical Evidence</div>
+              <ul>
+                <li><span>Out-of-Band callback confirmed! Received 1 request(s) with token &#x27;ssrf_tok_8eddc1428cb44fac&#x27; from IP 127.0.0.1 at 2026-11-27T10:14:23.121Z (Poll time: 0.001s).</span></li>
+              </ul>
+            </div>
+
+            <div class="fix-box">
+              <div class="fix-heading">Recommended Remediation</div>
+              <div>Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECTION 5: DETECTION TECHNIQUES EVALUATION
+         ========================================================= -->
+    <section class="mb-8">
+      <h2 class="section-title">Detection Techniques Evaluation</h2>
+      <p class="section-desc">Performance of the five specialized SSRF detection engines executed during this assessment.</p>
+
+      <div class="technique-grid">
+        
+        <div class="tech-card">
+          <h4>In-Band / Content-Based</h4>
+          <p>Tests for direct reflection of internal resources, configuration vaults, and verification markers through public proxy endpoints.</p>
+          <div class="tech-stats">
+            <div class="tech-stat-item"><span class="tech-stat-label">Tests Run:</span> <span class="tech-stat-val">13</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Positive Hits:</span> <span class="tech-stat-val ">0</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Negative:</span> <span class="tech-stat-val">13</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Inconclusive:</span> <span class="tech-stat-val">0</span></div>
+          </div>
+        </div>
+
+        <div class="tech-card">
+          <h4>Limited-Response</h4>
+          <p>Evaluates indirect leakage via HTTP 204 status codes, internal response headers, truncated buffers, and policy suppression filters.</p>
+          <div class="tech-stats">
+            <div class="tech-stat-item"><span class="tech-stat-label">Tests Run:</span> <span class="tech-stat-val">5</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Positive Hits:</span> <span class="tech-stat-val ">0</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Negative:</span> <span class="tech-stat-val">5</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Inconclusive:</span> <span class="tech-stat-val">0</span></div>
+          </div>
+        </div>
+
+        <div class="tech-card">
+          <h4>Blind / Out-of-Band</h4>
+          <p>Verifies asynchronous server-initiated callbacks against a dedicated local listener using correlated high-entropy tokens.</p>
+          <div class="tech-stats">
+            <div class="tech-stat-item"><span class="tech-stat-label">Tests Run:</span> <span class="tech-stat-val">1</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Positive Hits:</span> <span class="tech-stat-val pos">1</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Negative:</span> <span class="tech-stat-val">0</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Inconclusive:</span> <span class="tech-stat-val">0</span></div>
+          </div>
+        </div>
+
+        <div class="tech-card">
+          <h4>Time-Based</h4>
+          <p>Analyzes round-trip latency differentials using multi-sample median calculations to identify slow or delayed internal requests.</p>
+          <div class="tech-stats">
+            <div class="tech-stat-item"><span class="tech-stat-label">Tests Run:</span> <span class="tech-stat-val">1</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Positive Hits:</span> <span class="tech-stat-val ">0</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Negative:</span> <span class="tech-stat-val">1</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Inconclusive:</span> <span class="tech-stat-val">0</span></div>
+          </div>
+        </div>
+
+        <div class="tech-card">
+          <h4>Boolean-Based</h4>
+          <p>Infers downstream evaluation by comparing HTTP status, length, and header divergence between conditional TRUE and FALSE queries.</p>
+          <div class="tech-stats">
+            <div class="tech-stat-item"><span class="tech-stat-label">Tests Run:</span> <span class="tech-stat-val">1</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Positive Hits:</span> <span class="tech-stat-val ">0</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Negative:</span> <span class="tech-stat-val">1</span></div>
+            <div class="tech-stat-item"><span class="tech-stat-label">Inconclusive:</span> <span class="tech-stat-val">0</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECTION 6: PRACTICAL REMEDIATION PLAN
+         ========================================================= -->
+    <section class="mb-8">
+      <h2 class="section-title">Remediation Summary</h2>
+      <p class="section-desc">Practical, engineering-focused remediation steps to systematically neutralize SSRF attack vectors across the application.</p>
+
+      <div class="remediation-list">
+        <div class="remediation-item">
+          <h4>1. Strict Destination Allowlisting</h4>
+          <p>Never permit user input to specify arbitrary IP addresses or hostnames. Maintain an explicit allowlist of authorized external destination domains and strictly block requests targeting loopback (<code>127.0.0.0/8</code>), private subnets (<code>10.0.0.0/8</code>, <code>172.16.0.0/12</code>, <code>192.168.0.0/16</code>), and link-local ranges.</p>
+        </div>
+
+        <div class="remediation-item">
+          <h4>2. Pre-Validation IP Canonicalization</h4>
+          <p>Resolve hostnames to IP addresses prior to allowlist verification. Normalize alternative numeric representations (such as decimal DWORD, octal, hex, and shorthand addresses) before socket connection to prevent host-parsing bypasses.</p>
+        </div>
+
+        <div class="remediation-item">
+          <h4>3. Disable or Restrict HTTP Redirects</h4>
+          <p>Disable downstream HTTP client redirect following (HTTP 301, 302, 307, 308), or enforce strict allowlist re-validation on every <code>Location</code> header target before following.</p>
+        </div>
+
+        <div class="remediation-item">
+          <h4>4. Network-Level Egress Firewalling</h4>
+          <p>Implement OS-level and cloud network egress filters that prevent web-tier instances from initiating outbound connections to internal management ports or internal microservices.</p>
+        </div>
+
+        <div class="remediation-item">
+          <h4>5. Response &amp; Header Sanitization</h4>
+          <p>Do not forward raw downstream HTTP status codes (such as HTTP 204), internal metadata headers, or truncated error streams directly to the end user. Return uniform application responses.</p>
+        </div>
+
+        <div class="remediation-item">
+          <h4>6. Enforce Bounded Request Timeouts</h4>
+          <p>Configure aggressive connection timeouts (1.0s) and read timeouts (2.0s) on all outbound server-side requests to eliminate time-based inference and blind latency probes.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================
+         SECTION 7: TECHNICAL SCAN DETAILS
+         ========================================================= -->
+    <section class="mb-8">
+      <h2 class="section-title">Technical Scan Details</h2>
+      <div class="scan-details-card">
+        <table class="details-table">
+          <tr>
+            <td>Target Application</td>
+            <td><code>http://127.0.0.1:8080</code></td>
+          </tr>
+          <tr>
+            <td>Scan Evaluation Mode</td>
+            <td><strong>SECURE</strong></td>
+          </tr>
+          <tr>
+            <td>Execution Status</td>
+            <td><span class="badge badge-info" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;">COMPLETED</span></td>
+          </tr>
+          <tr>
+            <td>Discovered Endpoints</td>
+            <td><code>/fetch</code>, <code>/</code>, <code>/health</code>, <code>/fetch-secure</code>, <code>/redirect</code></td>
+          </tr>
+          <tr>
+            <td>Parameters Evaluated</td>
+            <td><code>mode</code>, <code>url</code></td>
+          </tr>
+          <tr>
+            <td>Total Tests Executed</td>
+            <td>25 probes</td>
+          </tr>
+          <tr>
+            <td>Scan Duration</td>
+            <td>7.34s</td>
+          </tr>
+          <tr>
+            <td>DAST Framework</td>
+            <td>SSRF Sentinel Engine v2.1</td>
+          </tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- Report Footer -->
+    <footer class="report-footer">
+      <p>Generated by <strong>SSRF Sentinel</strong> v2.1 &bull; SSRF DAST Framework</p>
+      <p style="margin-top: 4px; font-size: 0.75rem; color: #94a3b8;">Confidential Security Assessment Document &bull; Generated 2026-11-27 10:14:25 UTC</p>
+    </footer>
+
+  </div>
+
+  <!-- =========================================================
+       Embedded Offline JSON Data & JavaScript Functions
+       ========================================================= -->
+  <script>
+    // Embedded JSON payload for 100% offline JSON export
+    const RAW_SCAN_DATA = {"project": "SSRF Sentinel", "version": "2.1", "target": "http://127.0.0.1:8080", "scan_mode": "SECURE", "scan_date": "2026-11-27 10:14:25 UTC", "scan_duration_seconds": 7.34, "scan_status": "COMPLETED", "summary": {"endpoints_discovered": 5, "parameters_tested": 2, "tests_executed": 25, "positive_tests": 1, "negative_tests": 24, "inconclusive_tests": 0, "unique_findings": 1}, "endpoints": ["/fetch", "/", "/health", "/fetch-secure", "/redirect"], "parameters": ["mode", "url"], "vulnerabilities": [{"id": "SSRF-001", "name": "Blind SSRF via Local Callback", "technique": "Blind / Out-of-Band", "severity": "HIGH", "confidence": "LAB_CONFIRMED", "endpoint": "/fetch", "parameter": "url", "description": "The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.", "what_happened": "The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.", "impact": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.", "why_it_matters": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.", "evidence": ["Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_8eddc1428cb44fac' from IP 127.0.0.1 at 2026-11-27T10:14:23.121Z (Poll time: 0.001s)."], "recommendation": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations.", "recommended_fix": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations."}]};
+
+    let currentSeverityFilter = "ALL";
+    let isAllExpanded = true;
+
+    // Filter cards by severity
+    function setSeverityFilter(sev) {
+      currentSeverityFilter = sev;
+      document.querySelectorAll(".filter-btn").forEach(btn => {
+        if (btn.getAttribute("data-filter") === sev) {
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      });
+      filterFindings();
+    }
+
+    // Toggle individual card expansion
+    function toggleCard(headerElem) {
+      const card = headerElem.closest(".vuln-card");
+      if (card) {
+        card.classList.toggle("expanded");
+      }
+    }
+
+    // Expand / Collapse All
+    function toggleAllCards() {
+      const cards = document.querySelectorAll(".vuln-card");
+      const btn = document.getElementById("btnToggleAll");
+      isAllExpanded = !isAllExpanded;
+
+      cards.forEach(card => {
+        if (isAllExpanded) {
+          card.classList.add("expanded");
+        } else {
+          card.classList.remove("expanded");
+        }
+      });
+
+      btn.textContent = isAllExpanded ? "Collapse All" : "Expand All";
+    }
+
+    // Real-time search and filter
+    function filterFindings() {
+      const term = (document.getElementById("searchInput").value || "").toLowerCase().trim();
+      const cards = document.querySelectorAll(".vuln-card");
+
+      cards.forEach(card => {
+        const sev = (card.getAttribute("data-severity") || "").toUpperCase();
+        const text = (card.getAttribute("data-search-text") || "").toLowerCase();
+
+        const matchesSeverity = (currentSeverityFilter === "ALL" || sev === currentSeverityFilter);
+        const matchesSearch = (!term || text.includes(term));
+
+        if (matchesSeverity && matchesSearch) {
+          card.style.display = "block";
+        } else {
+          card.style.display = "none";
+        }
+      });
+    }
+
+    // Client-side offline JSON download
+    function downloadJsonReport() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(RAW_SCAN_DATA, null, 2));
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "ssrf_report.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+  </script>
+</body>
+</html>
