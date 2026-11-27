@@ -1,3 +1,5 @@
+import time
+from typing import List, Dict, Any
 from engine.response_analyzer import ResponseAnalyzer
 from engine.payload_generator import PayloadGenerator
 from engine.inband_detector import InBandDetector
@@ -11,11 +13,12 @@ class SSRFDetector:
     """
     Unified Detection Coordinator for SSRF Sentinel.
     Orchestrates the five specialized detection engines across identified candidate parameters:
-    1. In-Band / Content-Based SSRF
+    1. In-Band / Content-Based SSRF (including alternative notations & redirects)
     2. Limited-Response SSRF
     3. Blind / Out-of-Band (OOB) SSRF
     4. Time-Based SSRF
     5. Boolean-Based SSRF
+    Also handles input validation controls and supports both Vulnerable and Secure evaluation modes.
     """
 
     def __init__(self, client):
@@ -23,7 +26,7 @@ class SSRFDetector:
         self.payload_generator = PayloadGenerator()
         self.response_analyzer = ResponseAnalyzer()
 
-        # Initialize independent detection engines
+        # Initialize modular detection engines
         self.inband_detector = InBandDetector(
             self.client,
             self.response_analyzer,
@@ -51,9 +54,17 @@ class SSRFDetector:
         )
 
         self.findings = []
+        self.raw_probe_results = []
+        self.stats = {
+            "tests_executed": 0,
+            "positive_tests": 0,
+            "negative_tests": 0,
+            "inconclusive_tests": 0,
+            "defense_verified": 0,
+            "unique_vulnerabilities": 0
+        }
 
     def _create_error_finding(self, category: str, technique: str, endpoint: str, parameter: str, error: Exception) -> dict:
-        """Constructs an error/failure finding when a detector throws an unhandled exception."""
         return {
             "vulnerability_category": category,
             "detection_technique": technique,
@@ -67,60 +78,61 @@ class SSRFDetector:
             "confidence": "INCONCLUSIVE",
             "evidence": [f"Detector encountered unexpected error during probing: {str(error)}"],
             "verification_method": "Error Capture Handler",
-            "test_outcome": "FAILED",
+            "test_outcome": "INCONCLUSIVE",
             "extra_metadata": {"error_type": type(error).__name__}
         }
 
-    def _run_negative_controls(self, endpoint: str, parameter: str) -> list:
-        """Executes negative control calibration probes to verify false-positive immunity."""
-        ctrl_probes = self.payload_generator.generate_control_payloads()
+    def _run_negative_controls(self, endpoint: str, parameter: str, mode: str = "vulnerable") -> List[Dict[str, Any]]:
+        """Executes Category E negative control probes (unsupported schemes, malformed URLs)."""
+        ctrl_probes = self.payload_generator.generate_category_e()
         findings = []
-        for probe in ctrl_probes:
-            response = self.client.get(endpoint, params={parameter: probe["payload"]})
-            metrics = self.response_analyzer.extract_metrics(response)
-            eval_result = self.response_analyzer.inspect_inband(metrics)
-            is_detected = eval_result["detected"]
+        print(f"\n  [INPUT-VALIDATION] Testing {len(ctrl_probes)} negative control / scheme probes...")
 
-            findings.append(self.response_analyzer.create_finding(
-                category="NEGATIVE_CONTROL",
-                technique="Negative Control Calibration",
+        for probe in ctrl_probes:
+            params = {parameter: probe["payload"]}
+            if mode == "secure":
+                params["mode"] = "secure"
+
+            response = self.client.get(endpoint, params=params)
+            metrics = self.response_analyzer.extract_metrics(response)
+            status_code = metrics["status_code"]
+
+            # If the application rejected the malformed/unsupported scheme (e.g. 400 or 403), that's expected
+            is_blocked = (status_code in (400, 403, 502))
+            test_outcome = "DEFENSE_VERIFIED" if is_blocked else "SECURITY_FAILURE"
+
+            finding = self.response_analyzer.create_finding(
+                category="INPUT_VALIDATION",
+                technique="Scheme & Syntax Validation",
                 endpoint=endpoint,
                 parameter=parameter,
                 payload=probe["payload"],
                 response=response,
-                detected=is_detected,
-                confidence="NONE" if not is_detected else "HIGH",
-                evidence=["Negative control verified: no internal data or markers exposed."] if not is_detected else ["False positive: Negative control triggered unexpected SSRF detection."],
+                detected=not is_blocked,
+                confidence="LAB_CONFIRMED" if is_blocked else "HIGH",
+                evidence=[f"Scheme/input validation check: status={status_code} (Blocked={is_blocked})."],
                 verification_method="Negative Control Invariance Check",
-                extra_metadata={"probe_id": probe["id"]}
-            ))
+                extra_metadata={
+                    "probe_id": probe["id"],
+                    "probe_name": probe["name"],
+                    "test_outcome": test_outcome,
+                    "mode": mode
+                }
+            )
+            findings.append(finding)
         return findings
 
-    def _normalize_and_deduplicate(self, raw_findings: list) -> list:
-        """Normalizes and deduplicates findings while preserving complete evidence traces."""
-        normalized = []
-        seen = set()
-
-        for f in raw_findings:
-            # Create a signature based on endpoint, parameter, technique, and payload
-            sig = (
-                f.get("endpoint"),
-                f.get("parameter"),
-                f.get("detection_technique"),
-                f.get("payload")
-            )
-            if sig not in seen:
-                seen.add(sig)
-                normalized.append(f)
-
-        return normalized
-
-    def scan(self, parameters: list) -> list:
+    def scan(self, parameters: list, mode: str = "vulnerable") -> List[Dict[str, Any]]:
+        """
+        Executes complete multi-engine SSRF scan against candidate parameters.
+        mode can be 'vulnerable' (evaluating flaws) or 'secure' (evaluating defenses).
+        """
         print("\n" + "=" * 65)
-        print("          STARTING MULTI-ENGINE SSRF DETECTION")
+        print(f"          STARTING MULTI-ENGINE SSRF DETECTION [MODE: {mode.upper()}]")
         print("=" * 65)
 
         self.findings = []
+        self.raw_probe_results = []
         candidates = [p for p in parameters if p.get("ssrf_candidate")]
 
         if not candidates:
@@ -138,92 +150,111 @@ class SSRFDetector:
 
             print(f"\n[TARGET] Probing Endpoint: {endpoint} | Parameter: '{parameter_name}' (Priority: {candidate.get('priority', 'HIGH')})")
 
-            # 1. In-Band / Content-Based SSRF Detection
+            # 1. Negative Control / Scheme Validation
             try:
-                inband_findings = self.inband_detector.scan(endpoint, parameter_name)
-                self.findings.extend(inband_findings)
+                ctrl_findings = self._run_negative_controls(endpoint, parameter_name, mode=mode)
+                self.raw_probe_results.extend(ctrl_findings)
+            except Exception as err:
+                print(f"  [ERROR] Negative control probe error: {err}")
+                self.raw_probe_results.append(self._create_error_finding("INPUT_VALIDATION", "Scheme Validation", endpoint, parameter_name, err))
+
+            # 2. In-Band / Content-Based SSRF (Categories A, B, C, D)
+            try:
+                inband_findings = self.inband_detector.scan(endpoint, parameter_name, mode=mode)
+                self.raw_probe_results.extend(inband_findings)
             except Exception as err:
                 print(f"  [ERROR] In-Band detector error: {err}")
-                self.findings.append(self._create_error_finding("INBAND_SSRF", "In-Band / Content-Based SSRF", endpoint, parameter_name, err))
+                self.raw_probe_results.append(self._create_error_finding("INBAND_SSRF", "In-Band / Content-Based", endpoint, parameter_name, err))
 
-            # 2. Limited-Response SSRF Detection
+            # 3. Limited-Response SSRF (Category F)
             try:
-                limited_findings = self.limited_detector.scan(endpoint, parameter_name)
-                self.findings.extend(limited_findings)
+                limited_findings = self.limited_detector.scan(endpoint, parameter_name, mode=mode)
+                self.raw_probe_results.extend(limited_findings)
             except Exception as err:
                 print(f"  [ERROR] Limited-Response detector error: {err}")
-                self.findings.append(self._create_error_finding("LIMITED_RESPONSE_SSRF", "Limited-Response SSRF", endpoint, parameter_name, err))
+                self.raw_probe_results.append(self._create_error_finding("LIMITED_RESPONSE_SSRF", "Limited-Response", endpoint, parameter_name, err))
 
-            # 3. Blind / Out-of-Band SSRF Detection
+            # 4. Blind / Out-of-Band (OOB) SSRF (Category I)
             try:
-                blind_findings = self.blind_detector.scan(endpoint, parameter_name)
-                self.findings.extend(blind_findings)
+                blind_findings = self.blind_detector.scan(endpoint, parameter_name, mode=mode)
+                self.raw_probe_results.extend(blind_findings)
             except Exception as err:
-                print(f"  [ERROR] Blind OOB detector error: {err}")
-                self.findings.append(self._create_error_finding("BLIND_OOB_SSRF", "Blind / Out-of-Band SSRF", endpoint, parameter_name, err))
+                print(f"  [ERROR] Blind / OOB detector error: {err}")
+                self.raw_probe_results.append(self._create_error_finding("BLIND_OOB_SSRF", "Blind / Out-of-Band", endpoint, parameter_name, err))
 
-            # 4. Time-Based SSRF Detection
+            # 5. Time-Based SSRF (Category G)
             try:
-                time_findings = self.time_detector.scan(endpoint, parameter_name)
-                self.findings.extend(time_findings)
+                time_findings = self.time_detector.scan(endpoint, parameter_name, mode=mode)
+                self.raw_probe_results.extend(time_findings)
             except Exception as err:
                 print(f"  [ERROR] Time-Based detector error: {err}")
-                self.findings.append(self._create_error_finding("TIME_BASED_SSRF", "Time-Based SSRF", endpoint, parameter_name, err))
+                self.raw_probe_results.append(self._create_error_finding("TIME_BASED_SSRF", "Time-Based", endpoint, parameter_name, err))
 
-            # 5. Boolean-Based SSRF Detection
+            # 6. Boolean-Based SSRF (Category H)
             try:
-                boolean_findings = self.boolean_detector.scan(endpoint, parameter_name)
-                self.findings.extend(boolean_findings)
+                boolean_findings = self.boolean_detector.scan(endpoint, parameter_name, mode=mode)
+                self.raw_probe_results.extend(boolean_findings)
             except Exception as err:
                 print(f"  [ERROR] Boolean-Based detector error: {err}")
-                self.findings.append(self._create_error_finding("BOOLEAN_BASED_SSRF", "Boolean-Based SSRF", endpoint, parameter_name, err))
+                self.raw_probe_results.append(self._create_error_finding("BOOLEAN_BASED_SSRF", "Boolean-Based", endpoint, parameter_name, err))
 
-            # 6. Negative Control Calibration Probe
-            try:
-                ctrl_findings = self._run_negative_controls(endpoint, parameter_name)
-                self.findings.extend(ctrl_findings)
-            except Exception as err:
-                print(f"  [ERROR] Negative control calibration error: {err}")
+        # Tally metrics
+        total = len(self.raw_probe_results)
+        positives = sum(1 for f in self.raw_probe_results if f.get("detected") is True)
+        defenses = sum(1 for f in self.raw_probe_results if f.get("extra_metadata", {}).get("test_outcome") == "DEFENSE_VERIFIED")
+        inconclusives = sum(1 for f in self.raw_probe_results if f.get("confidence") == "INCONCLUSIVE")
+        negatives = total - positives - inconclusives
 
-        self.findings = self._normalize_and_deduplicate(self.findings)
+        self.stats = {
+            "tests_executed": total,
+            "positive_tests": positives,
+            "negative_tests": negatives,
+            "inconclusive_tests": inconclusives,
+            "defense_verified": defenses,
+            "unique_vulnerabilities": 0  # Updated during consolidation
+        }
 
-        print("\n[INFO] Multi-Engine SSRF detection completed.")
+        # Consolidate raw probes into findings
+        self.findings = self.raw_probe_results
         return self.findings
 
     def display_results(self):
-        print("\n" + "=" * 70)
+        print("\n" + "=" * 65)
         print("               SSRF SENTINEL - DETECTION SUMMARY")
-        print("=" * 70)
+        print("=" * 65)
 
-        confirmed = [f for f in self.findings if f.get("detected")]
+        detected_probes = [f for f in self.findings if f.get("detected") is True]
 
-        if not confirmed:
-            print("[INFO] No positive SSRF vulnerabilities confirmed during this scan.")
+        if not detected_probes:
+            print("\n[+] No SSRF vulnerabilities detected across candidate parameters.")
+            defenses = sum(1 for f in self.findings if f.get("extra_metadata", {}).get("test_outcome") == "DEFENSE_VERIFIED")
+            if defenses > 0:
+                print(f"[INFO] Verified {defenses} defensive controls active in application.")
         else:
-            for i, f in enumerate(confirmed, 1):
-                print(f"\n[{i}] VULNERABILITY CONFIRMED: {f.get('detection_technique')}")
-                print(f"    Category   : {f.get('vulnerability_category')}")
-                print(f"    Endpoint   : {f.get('endpoint')}")
-                print(f"    Parameter  : {f.get('parameter')}")
-                print(f"    Payload    : {f.get('payload')}")
-                print(f"    Confidence : {f.get('confidence')}")
-                print(f"    Method     : {f.get('verification_method')}")
-                evidence = f.get("evidence", [])
-                for ev in evidence:
+            for idx, f in enumerate(detected_probes, 1):
+                category = f.get("vulnerability_category", "UNKNOWN")
+                technique = f.get("detection_technique", "UNKNOWN")
+                endpoint = f.get("endpoint", "")
+                param = f.get("parameter", "")
+                payload = f.get("payload", "")
+                confidence = f.get("confidence", "NONE")
+                method = f.get("verification_method", "N/A")
+                evidence_list = f.get("evidence", [])
+
+                print(f"\n[{idx}] VULNERABILITY CONFIRMED: {technique}")
+                print(f"    Category   : {category}")
+                print(f"    Endpoint   : {endpoint}")
+                print(f"    Parameter  : {param}")
+                print(f"    Payload    : {payload}")
+                print(f"    Confidence : {confidence}")
+                print(f"    Method     : {method}")
+                for ev in evidence_list[:2]:
                     print(f"    - Evidence : {ev}")
 
-        print("\n" + "-" * 70)
-        print(f" Total Tests Run : {len(self.findings)}")
-        print(f" Positive Tests  : {len(confirmed)}")
-
-        # Technique breakdown
-        by_tech = {}
-        for f in confirmed:
-            tech = f.get("detection_technique", "Unknown")
-            by_tech[tech] = by_tech.get(tech, 0) + 1
-
-        if by_tech:
-            print(" Breakdown by Technique:")
-            for tech, count in by_tech.items():
-                print(f"   * {tech:32}: {count} positive")
-        print("=" * 70)
+        print("\n" + "-" * 65)
+        print(f" Total Tests Executed : {self.stats['tests_executed']}")
+        print(f" Positive Probe Hits  : {self.stats['positive_tests']}")
+        print(f" Negative / Clean     : {self.stats['negative_tests']}")
+        print(f" Inconclusive Tests   : {self.stats['inconclusive_tests']}")
+        print(f" Defensive Controls   : {self.stats['defense_verified']}")
+        print("=" * 65)

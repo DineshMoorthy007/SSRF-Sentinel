@@ -1,0 +1,250 @@
+{
+  "dataset_size": 29,
+  "confusion_matrix": {
+    "true_positives": 20,
+    "true_negatives": 9,
+    "false_positives": 0,
+    "false_negatives": 0
+  },
+  "metrics": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "accuracy": 1.0
+  },
+  "evaluation_timestamp": "2026-11-27T07:12:05Z",
+  "test_cases": [
+    {
+      "id": "PL-INBAND-001",
+      "name": "Internal Secret Access",
+      "category": "Category A: Standard Internal URLs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-INBAND-002",
+      "name": "Internal Admin Core Config",
+      "category": "Category A: Standard Internal URLs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-INBAND-003",
+      "name": "Internal Status Service",
+      "category": "Category A: Standard Internal URLs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-BYPASS-DEC-001",
+      "name": "Decimal DWORD IP Representation",
+      "category": "Category B: Alternative Local Addresses",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-BYPASS-SHORT-002",
+      "name": "Shorthand IP Representation",
+      "category": "Category B: Alternative Local Addresses",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-BYPASS-OCT-003",
+      "name": "Octal IP Representation",
+      "category": "Category B: Alternative Local Addresses",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-BYPASS-HEX-004",
+      "name": "Hexadecimal IP Representation",
+      "category": "Category B: Alternative Local Addresses",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-BYPASS-IPV6-005",
+      "name": "IPv6 Loopback Representation",
+      "category": "Category B: Alternative Local Addresses",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-ENC-IP-001",
+      "name": "URL-Encoded IP Address",
+      "category": "Category C: URL Encoding & Normalization",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-ENC-HOST-002",
+      "name": "URL-Encoded Localhost Authority",
+      "category": "Category C: URL Encoding & Normalization",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-REDIR-INT-001",
+      "name": "Internal HTTP 302 Redirect to Secret",
+      "category": "Category D: Redirect-Based Inputs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-REDIR-PUB-002",
+      "name": "Public Application Open Redirect Bounce",
+      "category": "Category D: Redirect-Based Inputs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-LIM-STATUS-001",
+      "name": "Status-Only HTTP 204 Probe",
+      "category": "Category F: Limited-Response Test Inputs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-LIM-HEADER-002",
+      "name": "Header-Only Marker Leak Probe",
+      "category": "Category F: Limited-Response Test Inputs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-LIM-TRUNC-003",
+      "name": "Truncated Response Buffer Probe",
+      "category": "Category F: Limited-Response Test Inputs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-LIM-GEN-004",
+      "name": "Generic Success Message Probe",
+      "category": "Category F: Limited-Response Test Inputs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-LIM-SUPP-005",
+      "name": "Content-Filter Suppressed Body Probe",
+      "category": "Category F: Limited-Response Test Inputs",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-OOB-001",
+      "name": "Dedicated Blind OOB Callback Probe",
+      "category": "Category I: Blind / OOB",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-TIME-DELAY-002",
+      "name": "Time-Based Latency Delay Probe",
+      "category": "Category G: Time-Based",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "PL-BOOL-TRUE-001",
+      "name": "Boolean Condition Differential Probe",
+      "category": "Category H: Boolean-Based",
+      "ground_truth": 1,
+      "predicted": 1,
+      "classification": "TP (True Positive)"
+    },
+    {
+      "id": "CTRL-HEALTH-001",
+      "name": "Ordinary Public Health Endpoint",
+      "category": "Negative Control: Clean Public Service",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "PL-SCHEME-FILE-001",
+      "name": "File Scheme Rejection Probe",
+      "category": "Category E: Unsupported Schemes & Malformed URLs",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "PL-SCHEME-GOPHER-002",
+      "name": "Gopher Scheme Rejection Probe",
+      "category": "Category E: Unsupported Schemes & Malformed URLs",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "PL-SCHEME-FTP-003",
+      "name": "FTP Scheme Rejection Probe",
+      "category": "Category E: Unsupported Schemes & Malformed URLs",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "PL-MALFORMED-004",
+      "name": "Malformed Authority Probe",
+      "category": "Category E: Unsupported Schemes & Malformed URLs",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "CTRL-REDIR-LOOP-001",
+      "name": "Infinite Redirect Loop Exhaustion",
+      "category": "Negative Control: Redirect Safety",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "SEC-BLOCK-SECRET-001",
+      "name": "Secure Mode Direct Access Block",
+      "category": "Defense Control: Secure Mode Allowlist",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "SEC-BLOCK-DEC-002",
+      "name": "Secure Mode Alternative IP Notation Block",
+      "category": "Defense Control: Secure Mode Allowlist",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    },
+    {
+      "id": "SEC-BLOCK-FETCHSEC-003",
+      "name": "Dedicated Secure Endpoint Restriction",
+      "category": "Defense Control: Secure Mode Allowlist",
+      "ground_truth": 0,
+      "predicted": 0,
+      "classification": "TN (True Negative)"
+    }
+  ]
+}

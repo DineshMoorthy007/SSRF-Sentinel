@@ -1,6 +1,7 @@
 import time
 import uuid
 import requests
+from typing import List, Dict, Any
 from config import (
     CALLBACK_RECEIVER_URL,
     CALLBACK_POLL_TIMEOUT,
@@ -15,8 +16,9 @@ from engine.response_analyzer import ResponseAnalyzer
 class BlindOOBDetector:
     """
     Detection engine for Blind / Out-of-Band (OOB) SSRF.
-    Tests whether the server generates an external HTTP request to a dedicated local callback listener (port 8090).
-    Uses cryptographic tokens and bounded polling to prevent cross-test attribution.
+    Integrates with the dedicated local callback receiver (port 8090).
+    Uses unique high-entropy tokens and bounded polling to verify out-of-band execution.
+    A callback must actually be received and verified in the evidence store before reporting detection.
     """
 
     def __init__(self, client, response_analyzer=None, payload_generator=None, callback_url=None):
@@ -27,7 +29,7 @@ class BlindOOBDetector:
         self.session = requests.Session()
 
     def _generate_test_token(self) -> str:
-        """Requests a token from the callback server or falls back to local high-entropy token."""
+        """Requests a unique token from the callback server or generates a local high-entropy token."""
         try:
             resp = self.session.get(f"{self.callback_receiver_url}/token/generate", timeout=3)
             if resp.status_code == 200:
@@ -55,11 +57,12 @@ class BlindOOBDetector:
                         return {
                             "received": True,
                             "count": len(callbacks),
+                            "total_callbacks": data.get("total_callbacks", len(callbacks)),
+                            "unique_tokens": data.get("unique_tokens", 1),
                             "details": callbacks,
                             "poll_duration_s": round(time.time() - start_time, 3)
                         }
-            except Exception as e:
-                # Callback server might be briefly busy or starting up
+            except Exception:
                 pass
 
             time.sleep(CALLBACK_POLL_INTERVAL)
@@ -71,19 +74,20 @@ class BlindOOBDetector:
             "poll_duration_s": round(time.time() - start_time, 3)
         }
 
-    def scan(self, endpoint: str, parameter: str) -> list:
+    def scan(self, endpoint: str, parameter: str, mode: str = "vulnerable") -> List[Dict[str, Any]]:
         findings = []
         token = self._generate_test_token()
-        probe = self.payload_generator.generate_oob_payload(token=token)
+        probe = self.payload_generator.generate_category_i(token=token)
         target_callback_url = probe["payload"]
 
-        print(f"\n  [BLIND-OOB] Testing parameter '{parameter}' with tracking token: {token}")
+        print(f"\n  [BLIND-OOB] Testing parameter '{parameter}' with tracking token: {token} (Mode: {mode.upper()})")
+
+        params = {parameter: target_callback_url}
+        if mode == "secure":
+            params["mode"] = "secure"
 
         # 1. Dispatch request through public application
-        response = self.client.get(
-            endpoint,
-            params={parameter: target_callback_url}
-        )
+        response = self.client.get(endpoint, params=params)
 
         # 2. Perform bounded polling on the dedicated callback receiver
         poll_result = self._poll_evidence(token)
@@ -92,6 +96,7 @@ class BlindOOBDetector:
         confidence = "LAB_CONFIRMED" if is_detected else "NONE"
         evidence = []
         verification_method = "Out-of-Band Callback Correlation"
+        test_outcome = "POSITIVE" if is_detected else "NEGATIVE"
 
         if is_detected:
             first_callback = poll_result["details"][0]
@@ -100,17 +105,18 @@ class BlindOOBDetector:
                 f"with token '{token}' from IP {first_callback.get('source_ip')} "
                 f"at {first_callback.get('timestamp')} (Poll time: {poll_result['poll_duration_s']}s)."
             )
+            if first_callback.get("is_duplicate"):
+                evidence.append("Duplicate callback request detected and flagged by evidence store.")
             print(f"    [+] DETECTED: Blind OOB SSRF confirmed via callback token {token}")
         else:
             evidence.append(
-                f"No callback received on {self.callback_receiver_url} within "
-                f"{poll_result['poll_duration_s']}s for token '{token}'."
+                f"No Out-of-Band callback received for token '{token}' within {CALLBACK_POLL_TIMEOUT}s timeout."
             )
-            print(f"    [-] Clean: No outbound callback received for token {token}")
+            print(f"    [-] Clean: No OOB callback received for token {token}")
 
         finding = self.response_analyzer.create_finding(
             category="BLIND_OOB_SSRF",
-            technique="Blind / Out-of-Band SSRF",
+            technique="Blind / Out-of-Band",
             endpoint=endpoint,
             parameter=parameter,
             payload=target_callback_url,
@@ -120,10 +126,11 @@ class BlindOOBDetector:
             evidence=evidence,
             verification_method=verification_method,
             extra_metadata={
-                "oob_token": token,
-                "callback_receiver": self.callback_receiver_url,
-                "callback_count": poll_result["count"],
-                "callback_events": poll_result["details"]
+                "token": token,
+                "poll_result": poll_result,
+                "probe_id": probe["id"],
+                "test_outcome": test_outcome,
+                "mode": mode
             }
         )
 
@@ -133,4 +140,3 @@ class BlindOOBDetector:
 
     def close(self):
         self.session.close()
-

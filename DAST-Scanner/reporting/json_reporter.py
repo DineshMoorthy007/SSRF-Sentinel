@@ -1,214 +1,211 @@
 import json
 import os
-from datetime import datetime, timezone
+from typing import List, Dict, Any
 from config import PROJECT_NAME, TARGET_URL
 
 
 class JSONReporter:
     """
-    Compact, beginner-friendly JSON vulnerability reporter for SSRF Sentinel.
-    Generates a simple, clean, and easily understandable vulnerability report
-    designed for faculty members, interviewers, and beginners.
+    Concise, developer-focused JSON vulnerability reporter for SSRF Sentinel.
+    Generates structured, clean, and deduplicated reporting conforming strictly
+    to the required SSRF Sentinel schema.
     """
 
-    FINDING_TEMPLATES = {
-        "INBAND_SECRET_PROBE": {
-            "vulnerability_name": "Internal Secret Exposure",
-            "detection_technique": "In-Band / Content-Based",
-            "severity": "High",
-            "description": "The application fetched a simulated internal test secret and returned its restricted content directly in the response.",
-            "evidence": "The internal verification marker (SSRF_SENTINEL_INTERNAL_ACCESS_2026) was found in the application's response.",
-            "potential_impact": "An attacker could read sensitive internal files, API keys, and private data not exposed to the public internet.",
-            "recommended_fix": "Validate and restrict destination URLs. Block the server from sending requests to loopback and private internal network addresses."
+    # Structured knowledge base mapping unique vulnerability classes
+    VULNERABILITY_CATALOG = {
+        "INBAND_SECRET": {
+            "name": "In-Band Internal Secret Disclosure",
+            "technique": "Content-Based",
+            "severity": "HIGH",
+            "description": "The application accepts a user-controlled URL and fetches a restricted internal resource, returning confidential content directly in the HTTP response.",
+            "impact": "An attacker can directly read sensitive internal files, API tokens, and private services that are not exposed to the public internet.",
+            "recommendation": "Enforce a strict domain and IP allowlist on outgoing requests. Block loopback (127.0.0.0/8) and private IP ranges at the application and firewall level."
         },
-        "INBAND_ADMIN_CONFIG": {
-            "vulnerability_name": "Internal Admin Configuration Leakage",
-            "detection_technique": "In-Band / Content-Based",
-            "severity": "High",
-            "description": "The application fetched an internal administrative configuration endpoint and exposed simulated database and session keys.",
-            "evidence": "The internal admin verification marker (SSRF_SENTINEL_INBAND_FULL_ACCESS) and internal headers were returned in the response.",
-            "potential_impact": "An attacker could obtain administrative credentials and database connection details to compromise backend infrastructure.",
-            "recommended_fix": "Enforce a strict domain allowlist for outgoing requests and prevent backend response bodies from being forwarded to users."
+        "INBAND_ADMIN": {
+            "name": "Internal Admin Core Configuration Exposure",
+            "technique": "Content-Based",
+            "severity": "CRITICAL",
+            "description": "The application forwards server-side requests to an internal administration endpoint, leaking database credentials and administrative session keys.",
+            "impact": "Complete compromise of backend database infrastructure and administrative session impersonation.",
+            "recommendation": "Isolate administrative endpoints on dedicated private management subnets with mutual TLS authentication. Restrict application egress."
         },
-        "INBAND_STATUS_PROBE": {
-            "vulnerability_name": "Internal Service Metadata Exposure",
-            "detection_technique": "In-Band / Content-Based",
-            "severity": "Medium",
-            "description": "The application fetched an internal heartbeat service and exposed internal environment and service details.",
-            "evidence": "The internal test service identifier was returned in the response body.",
-            "potential_impact": "An attacker could map internal network topology and identify active internal services.",
-            "recommended_fix": "Restrict outgoing requests to authorized external services and disable access to internal diagnostic endpoints."
+        "BYPASS_ALTERNATIVE_IP": {
+            "name": "Alternative Host Representation Filter Bypass",
+            "technique": "Content-Based / Bypass",
+            "severity": "HIGH",
+            "description": "The URL validation parser fails to normalize alternative host notations (e.g., decimal DWORD, octal, hex, shorthand, IPv6), allowing attackers to bypass standard loopback string filters.",
+            "impact": "Bypasses naive blacklist filters that only match '127.0.0.1' or 'localhost', granting access to internal resources.",
+            "recommendation": "Resolve the hostname or IP to its canonical socket address prior to validation, and evaluate the resolved IP address against an allowlist."
         },
-        "LIMITED_STATUS_ONLY": {
-            "vulnerability_name": "Internal Request Execution via HTTP 204",
-            "detection_technique": "Limited-Response",
-            "severity": "Medium",
-            "description": "The application processed a request to an internal endpoint that returns an HTTP 204 No Content status, forwarding the success status.",
-            "evidence": "The server returned HTTP 204 No Content with an empty body, confirming the internal request succeeded.",
-            "potential_impact": "An attacker could use status codes to probe and map live internal network hosts and open ports.",
-            "recommended_fix": "Do not forward raw downstream HTTP status codes to users. Always return uniform application responses."
+        "REDIRECT_CHAIN": {
+            "name": "Redirect-Based SSRF Chaining",
+            "technique": "Redirect Chaining",
+            "severity": "HIGH",
+            "description": "The application's HTTP client automatically follows HTTP 301/302 redirects without re-validating the destination target, allowing an attacker to pivot into internal services.",
+            "impact": "Bypasses initial URL validation checks by bouncing through external or open redirect endpoints to reach protected internal hosts.",
+            "recommendation": "Disable automatic redirect following or strictly re-validate every redirect Location header against the authorized allowlist before following."
         },
-        "LIMITED_HEADER_ONLY": {
-            "vulnerability_name": "Internal Header Information Leakage",
-            "detection_technique": "Limited-Response",
-            "severity": "Medium",
-            "description": "The application forwarded custom metadata headers from an internal service while suppressing the response body.",
-            "evidence": "The internal test header marker (X-Internal-Marker: SSRF_HEADER_ONLY_FLAG) was present in the response headers.",
-            "potential_impact": "Internal headers can leak backend server details, internal routing names, and software versions.",
-            "recommended_fix": "Strip all internal headers before sending the response to the client, or avoid forwarding internal headers entirely."
+        "LIMITED_RESPONSE": {
+            "name": "Limited-Response SSRF",
+            "technique": "Limited-Response",
+            "severity": "MEDIUM",
+            "description": "The application executes server-side requests to internal endpoints and reveals internal state through status codes (HTTP 204), custom headers, or response lengths.",
+            "impact": "Enables internal port scanning, service discovery, and mapping of active internal infrastructure.",
+            "recommendation": "Do not forward downstream HTTP status codes or custom headers to the user. Always return uniform application responses."
         },
-        "LIMITED_TRUNCATED": {
-            "vulnerability_name": "Truncated Internal Response Disclosure",
-            "detection_technique": "Limited-Response",
-            "severity": "Medium",
-            "description": "The application fetched an internal resource that returned a partially truncated data string.",
-            "evidence": "A partial internal secret fragment was identified in the response body.",
-            "potential_impact": "Partial data leaks can expose fragments of internal secrets, tokens, or memory buffers.",
-            "recommended_fix": "Block requests to internal IP addresses and sanitize outgoing response streams."
+        "BLIND_OOB": {
+            "name": "Blind SSRF via Local Callback",
+            "technique": "Blind / Out-of-Band",
+            "severity": "HIGH",
+            "description": "The application triggers an outbound HTTP request to a dedicated local callback listener without reflecting the response content to the user.",
+            "impact": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.",
+            "recommendation": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations."
         },
-        "LIMITED_GENERIC": {
-            "vulnerability_name": "Generic Internal Execution Confirmation",
-            "detection_technique": "Limited-Response",
-            "severity": "Low",
-            "description": "The application accessed an internal resource that responded with a generic execution confirmation.",
-            "evidence": "The server returned a success confirmation message distinct from the baseline rejection response.",
-            "potential_impact": "An attacker could confirm the existence and availability of hidden internal APIs.",
-            "recommended_fix": "Return uniform error messages when a requested URL is rejected, without disclosing execution state."
+        "TIME_BASED": {
+            "name": "Time-Based SSRF",
+            "technique": "Time-Based",
+            "severity": "MEDIUM",
+            "description": "The application induces measurable, repeatable response delays when fetching slow or delayed internal resources.",
+            "impact": "Enables attackers to infer whether internal network ports or endpoints are open based on round-trip latency differentials.",
+            "recommendation": "Configure strict connection and read timeouts (e.g. 2.0 seconds or less) on all server-side HTTP clients."
         },
-        "LIMITED_SUPPRESSED": {
-            "vulnerability_name": "Policy-Suppressed Content Disclosure",
-            "detection_technique": "Limited-Response",
-            "severity": "Low",
-            "description": "The application processed an internal request where content filtering was triggered, revealing that an internal resource was intercepted.",
-            "evidence": "The response contained an active policy suppression indicator ([CONTENT_SUPPRESSED_BY_POLICY]).",
-            "potential_impact": "Confirms to an attacker that the targeted internal endpoint exists and triggers security filter rules.",
-            "recommended_fix": "Reject unauthorized internal destination URLs at the network layer rather than relying only on response filtering."
-        },
-        "BLIND_OOB_CALLBACK": {
-            "vulnerability_name": "Blind SSRF via Local Callback",
-            "detection_technique": "Blind / Out-of-Band",
-            "severity": "High",
-            "description": "The application made a server-side HTTP request to a local test listener on port 8090 without returning the response content.",
-            "evidence": "The dedicated local callback receiver confirmed an incoming request with the matching test tracking token.",
-            "potential_impact": "An attacker could trigger requests to unauthenticated internal services, webhook systems, or trigger remote callbacks.",
-            "recommended_fix": "Block the server from initiating arbitrary outbound HTTP connections and restrict egress network routing."
-        },
-        "TIME_BASED_SSRF": {
-            "vulnerability_name": "Time-Based Internal Request Detection",
-            "detection_technique": "Time-Based",
-            "severity": "Medium",
-            "description": "The application took noticeably longer to respond when asked to fetch an internally delayed endpoint compared to an immediate endpoint.",
-            "evidence": "A consistent delay of approximately 2.0 seconds was measured across multiple probe iterations compared to fast baseline requests.",
-            "potential_impact": "An attacker could infer whether internal IP addresses or ports are open based on response latency.",
-            "recommended_fix": "Set strict connection and read timeouts on server-side requests (e.g., 2 seconds or less)."
-        },
-        "BOOLEAN_BASED_SSRF": {
-            "vulnerability_name": "Boolean-Based Internal Request Detection",
-            "detection_technique": "Boolean-Based",
-            "severity": "Medium",
-            "description": "The application returned clearly different responses when internal true and false test conditions were evaluated.",
-            "evidence": "The server returned HTTP 200 (large response) for the true condition and HTTP 404 (small response) for the false condition.",
-            "potential_impact": "An attacker could exfiltrate internal data bit-by-bit using conditional true/false queries.",
-            "recommended_fix": "Ensure the application returns consistent HTTP status codes and response formats regardless of downstream conditions."
+        "BOOLEAN_BASED": {
+            "name": "Boolean-Based SSRF",
+            "technique": "Boolean-Based",
+            "severity": "MEDIUM",
+            "description": "The application returns distinctly different HTTP statuses, lengths, or headers when evaluating downstream conditional queries.",
+            "impact": "Allows attackers to infer internal data or configuration states through systematic true/false condition testing.",
+            "recommendation": "Ensure the application returns uniform HTTP status codes, body lengths, and error responses regardless of downstream condition evaluations."
         }
     }
 
-    def __init__(self):
-        self.report_directory = "reports"
-        os.makedirs(self.report_directory, exist_ok=True)
+    def __init__(self, report_dir: str = "reports"):
+        self.report_dir = report_dir
+        os.makedirs(self.report_dir, exist_ok=True)
 
-    def _format_finding(self, index, item):
-        probe_id = item.get("extra_metadata", {}).get("probe_id", "")
-        category = item.get("vulnerability_category", "")
+    def _classify_probe(self, probe: dict) -> str:
+        """Categorizes an individual probe into a unique vulnerability class."""
+        probe_id = probe.get("extra_metadata", {}).get("probe_id", "")
+        category = probe.get("vulnerability_category", "")
 
-        # Match against known probe templates
-        template = None
-        if probe_id in self.FINDING_TEMPLATES:
-            template = self.FINDING_TEMPLATES[probe_id]
-        elif category in self.FINDING_TEMPLATES:
-            template = self.FINDING_TEMPLATES[category]
+        if "ADMIN" in probe_id:
+            return "INBAND_ADMIN"
+        elif "BYPASS" in probe_id or "ENC" in probe_id:
+            return "BYPASS_ALTERNATIVE_IP"
+        elif "REDIR" in probe_id:
+            return "REDIRECT_CHAIN"
+        elif "INBAND" in category:
+            return "INBAND_SECRET"
+        elif "LIMITED" in category:
+            return "LIMITED_RESPONSE"
         elif "BLIND" in category or "OOB" in category:
-            template = self.FINDING_TEMPLATES["BLIND_OOB_CALLBACK"]
+            return "BLIND_OOB"
         elif "TIME" in category:
-            template = self.FINDING_TEMPLATES["TIME_BASED_SSRF"]
+            return "TIME_BASED"
         elif "BOOLEAN" in category:
-            template = self.FINDING_TEMPLATES["BOOLEAN_BASED_SSRF"]
+            return "BOOLEAN_BASED"
+        return "INBAND_SECRET"
 
-        if template:
-            vuln_name = template["vulnerability_name"]
-            technique = template["detection_technique"]
-            severity = template["severity"]
-            description = template["description"]
-            evidence = template["evidence"]
-            impact = template["potential_impact"]
-            fix = template["recommended_fix"]
-        else:
-            vuln_name = "Server-Side Request Forgery"
-            technique = item.get("detection_technique", "SSRF Probing")
-            severity = "Medium"
-            description = "The application allowed its server to fetch an internal resource based on user-supplied input."
-            evidence = item.get("evidence", ["Observed server response indicates internal request execution."])[0]
-            impact = "An attacker could potentially use this functionality to access sensitive internal resources."
-            fix = "Validate and restrict all destination URLs. Block unauthorized requests to internal network resources."
+    def consolidate_findings(self, raw_probes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Consolidates individual positive probes into distinct, unique vulnerability findings.
+        Groups multiple supporting probes under their primary vulnerability class.
+        """
+        positive_probes = [p for p in raw_probes if p.get("detected") is True]
+        grouped = {}
 
-        return {
-            "id": f"SSRF-{index:02d}",
-            "vulnerability_name": vuln_name,
-            "detection_technique": technique,
-            "severity": severity,
-            "affected_endpoint": item.get("endpoint", "/fetch"),
-            "affected_parameter": item.get("parameter", "url"),
-            "description": description,
-            "evidence": evidence,
-            "potential_impact": impact,
-            "recommended_fix": fix
-        }
+        for probe in positive_probes:
+            vuln_class = self._classify_probe(probe)
+            endpoint = probe.get("endpoint", "/fetch")
+            param = probe.get("parameter", "url")
+            key = (vuln_class, endpoint, param)
+
+            if key not in grouped:
+                grouped[key] = {
+                    "vuln_class": vuln_class,
+                    "endpoint": endpoint,
+                    "parameter": param,
+                    "highest_confidence": probe.get("confidence", "HIGH"),
+                    "probes": []
+                }
+
+            grouped[key]["probes"].append(probe)
+            # Elevate confidence if any supporting probe achieved LAB_CONFIRMED
+            if probe.get("confidence") == "LAB_CONFIRMED":
+                grouped[key]["highest_confidence"] = "LAB_CONFIRMED"
+
+        vulnerabilities = []
+        for idx, ((vuln_class, endpoint, param), data) in enumerate(grouped.items(), 1):
+            catalog_entry = self.VULNERABILITY_CATALOG.get(vuln_class, self.VULNERABILITY_CATALOG["INBAND_SECRET"])
+
+            # Collect unique evidence points across all supporting probes
+            evidence_set = []
+            for p in data["probes"]:
+                for ev in p.get("evidence", []):
+                    if ev not in evidence_set:
+                        evidence_set.append(ev)
+
+            vuln_id = f"SSRF-{idx:03d}"
+            vulnerabilities.append({
+                "id": vuln_id,
+                "name": catalog_entry["name"],
+                "technique": catalog_entry["technique"],
+                "severity": catalog_entry["severity"],
+                "confidence": data["highest_confidence"],
+                "endpoint": endpoint,
+                "parameter": param,
+                "description": catalog_entry["description"],
+                "evidence": evidence_set[:5],  # Keep evidence concise
+                "impact": catalog_entry["impact"],
+                "recommendation": catalog_entry["recommendation"]
+            })
+
+        return vulnerabilities
 
     def generate_report(
         self,
-        endpoints,
-        parameters,
-        findings,
-        total_tests=None,
-        scan_duration_seconds=0.0
-    ):
-        if total_tests is None:
-            total_tests = len(findings)
+        endpoints: list,
+        parameters: list,
+        findings: list,
+        total_tests: int = None,
+        scan_duration_seconds: float = None,
+        output_filename: str = "ssrf_report.json"
+    ) -> str:
+        """
+        Generates clean, readable, developer-friendly JSON report conforming
+        strictly to the requested schema.
+        """
+        # Consolidate raw probes into unique vulnerability findings
+        vulnerabilities = self.consolidate_findings(findings)
 
-        # Categorize test results
-        positive_tests = [f for f in findings if f.get("detected") and f.get("test_outcome") == "POSITIVE"]
-        negative_tests = [f for f in findings if not f.get("detected") and f.get("test_outcome") == "NEGATIVE"]
-        inconclusive_tests = [f for f in findings if f.get("confidence") == "INCONCLUSIVE" or f.get("test_outcome") == "FAILED"]
+        # Calculate counts
+        tests_executed = total_tests if total_tests is not None else len(findings)
+        positive_tests = sum(1 for f in findings if f.get("detected") is True)
+        inconclusive_tests = sum(1 for f in findings if f.get("confidence") == "INCONCLUSIVE")
+        negative_tests = tests_executed - positive_tests - inconclusive_tests
 
-        # Build clean, simplified findings list
-        vulnerability_findings = []
-        for index, item in enumerate(positive_tests, start=1):
-            vulnerability_findings.append(self._format_finding(index, item))
-
-        report = {
-            "scan_information": {
-                "project_name": PROJECT_NAME,
-                "target_url": TARGET_URL,
-                "scan_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-                "scan_status": "COMPLETED"
-            },
-            "scan_summary": {
+        report_data = {
+            "project": PROJECT_NAME,
+            "target": TARGET_URL,
+            "scan_status": "COMPLETED",
+            "summary": {
                 "endpoints_discovered": len(endpoints),
-                "parameters_analysed": len(parameters),
-                "total_tests_performed": total_tests,
-                "positive_results": len(positive_tests),
-                "negative_results": len(negative_tests),
-                "inconclusive_results": len(inconclusive_tests)
+                "parameters_tested": len(parameters),
+                "tests_executed": tests_executed,
+                "positive_tests": positive_tests,
+                "negative_tests": negative_tests,
+                "inconclusive_tests": inconclusive_tests,
+                "unique_findings": len(vulnerabilities)
             },
-            "vulnerability_findings": vulnerability_findings
+            "vulnerabilities": vulnerabilities
         }
 
-        report_path = os.path.join(self.report_directory, "ssrf_report.json")
+        output_path = os.path.join(self.report_dir, output_filename)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(report_data, f, indent=2)
 
-        with open(report_path, "w", encoding="utf-8") as report_file:
-            json.dump(report, report_file, indent=4, ensure_ascii=False)
+        print(f"[REPORT] Clean JSON report generated successfully.")
+        print(f"[REPORT] Location: {output_path}")
+        print(f"[REPORT] Summary: {positive_tests} positive probes -> {len(vulnerabilities)} unique vulnerabilities.")
 
-        print("\n[REPORT] Clean JSON report generated successfully.")
-        print(f"[REPORT] Location: {os.path.abspath(report_path)}")
-
-        return report_path
+        return output_path
