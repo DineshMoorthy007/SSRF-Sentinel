@@ -108,7 +108,7 @@ void InternalServer::registerRoutes() {
     );
 
     // -------------------------------------------------------------
-    // Category D: Time-Based SSRF
+    // Category C: Time-Based SSRF
     // -------------------------------------------------------------
     // Fast baseline endpoint (< 1ms execution)
     server.Get("/internal/fast",
@@ -150,7 +150,7 @@ void InternalServer::registerRoutes() {
     );
 
     // -------------------------------------------------------------
-    // Category E: Boolean-Based SSRF
+    // Category D: Boolean-Based SSRF
     // -------------------------------------------------------------
     server.Get("/internal/check",
         [](const httplib::Request& req, httplib::Response& res) {
@@ -188,6 +188,52 @@ void InternalServer::registerRoutes() {
                     "application/json"
                 );
             }
+        }
+    );
+
+    // -------------------------------------------------------------
+    // Category E: Redirect-Based SSRF Test Endpoints
+    // -------------------------------------------------------------
+    // Redirects client/SSRF proxy to a designated internal target
+    server.Get("/internal/redirect",
+        [](const httplib::Request& req, httplib::Response& res) {
+            std::string target = "/internal/secret";
+            if (req.has_param("to")) {
+                target = req.get_param_value("to");
+            } else if (req.has_param("target")) {
+                target = req.get_param_value("target");
+            }
+
+            int code = 302;
+            if (req.has_param("code")) {
+                try {
+                    int c = std::stoi(req.get_param_value("code"));
+                    if (c == 301 || c == 302 || c == 303 || c == 307 || c == 308) {
+                        code = c;
+                    }
+                } catch (...) {}
+            }
+
+            res.status = code;
+            res.set_header("Location", target.c_str());
+            res.set_header("X-Redirect-Target", target.c_str());
+            res.set_content(
+                InternalService::getRedirectNotice(target),
+                "application/json"
+            );
+        }
+    );
+
+    // Redirect loop simulator: redirects back to itself to test redirect exhaustion
+    server.Get("/internal/redirect-loop",
+        [](const httplib::Request& req, httplib::Response& res) {
+            (void)req;
+            res.status = 302;
+            res.set_header("Location", "http://127.0.0.1:8081/internal/redirect-loop");
+            res.set_content(
+                R"({"error":"Infinite redirect loop simulator"})",
+                "application/json"
+            );
         }
     );
 }

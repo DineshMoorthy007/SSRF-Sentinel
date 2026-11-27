@@ -96,35 +96,30 @@ int main() {
         std::cout << " 1. Public App         : http://127.0.0.1:8080" << std::endl;
         std::cout << "    - GET /            : Web UI / SSRF Test form" << std::endl;
         std::cout << "    - GET /health      : Public health status" << std::endl;
-        std::cout << "    - GET /fetch?url=  : Vulnerable SSRF proxy" << std::endl;
+        std::cout << "    - GET /fetch?url=  : SSRF proxy (mode=vulnerable|secure)" << std::endl;
+        std::cout << "    - GET /fetch-secure: Hardened SSRF proxy (secure mode only)" << std::endl;
+        std::cout << "    - GET /redirect?to=: Open redirect simulator" << std::endl;
         std::cout << " 2. Internal Service   : http://127.0.0.1:8081" << std::endl;
-        std::cout << "    - In-Band SSRF     : /internal/secret, /internal/admin/config" << std::endl;
-        std::cout << "    - Limited SSRF     : /internal/limited/status-only, header-only," << std::endl;
-        std::cout << "                         truncated, generic, suppressed" << std::endl;
-        std::cout << "    - Time-Based SSRF  : /internal/fast, /internal/delayed?ms=2000" << std::endl;
-        std::cout << "    - Boolean SSRF     : /internal/check?condition=true|false" << std::endl;
-        std::cout << " 3. OOB Callback       : http://127.0.0.1:8090" << std::endl;
-        std::cout << "    - GET /token/generate" << std::endl;
-        std::cout << "    - GET /callback?token=<tok>" << std::endl;
+        std::cout << "    - In-Band          : /internal/status, /internal/secret, /internal/admin/config" << std::endl;
+        std::cout << "    - Limited-Response : /internal/limited/status-only, header-only, truncated, generic, suppressed" << std::endl;
+        std::cout << "    - Time-Based       : /internal/fast, /internal/delayed?ms=2000" << std::endl;
+        std::cout << "    - Boolean-Based    : /internal/check?condition=true|false" << std::endl;
+        std::cout << "    - Redirect SSRF    : /internal/redirect?to=..., /internal/redirect-loop" << std::endl;
+        std::cout << " 3. OOB Receiver       : http://127.0.0.1:8090" << std::endl;
+        std::cout << "    - GET/POST /token/generate" << std::endl;
+        std::cout << "    - GET/POST /callback?token=<tok>" << std::endl;
         std::cout << "    - GET /evidence?token=<tok>" << std::endl;
+        std::cout << "    - POST /evidence/reset" << std::endl;
         std::cout << "========================================================" << std::endl;
-        std::cout << "Press ENTER or send SIGINT (Ctrl+C) to stop all services..." << std::endl;
+        std::cout << "[TARGET READY] Listening for requests. Press Ctrl+C to terminate." << std::endl;
 
-        // Wait for ENTER key in console
-        std::cin.get();
-
-        performShutdown();
-
+        // Join server threads
         if (publicThread.joinable()) publicThread.join();
         if (internalThread.joinable()) internalThread.join();
         if (callbackThread.joinable()) callbackThread.join();
 
-        std::cout << "[SUCCESS] All services stopped cleanly. Exiting." << std::endl;
-
     } catch (const std::exception& e) {
-        std::cerr << "\n[FATAL ERROR] " << e.what() << std::endl;
-        std::cout << "\nPress ENTER to exit..." << std::endl;
-        std::cin.get();
+        std::cerr << "[FATAL ERROR] " << e.what() << std::endl;
         return 1;
     }
 

@@ -150,6 +150,17 @@ class MockInternalHandler(http.server.BaseHTTPRequestHandler):
                 "verification_marker": "SSRF_TIME_DELAYED_SUCCESS"
             })
             self.wfile.write(resp.encode("utf-8"))
+        elif path == "/internal/redirect":
+            target = query.get("to", query.get("target", ["/internal/secret"]))[0]
+            self.send_response(302)
+            self.send_header("Location", target)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"redirect": True, "target": target, "verification_marker": "SSRF_REDIRECT_DISPATCHED"}).encode())
+        elif path == "/internal/redirect-loop":
+            self.send_response(302)
+            self.send_header("Location", "http://127.0.0.1:8081/internal/redirect-loop")
+            self.end_headers()
         elif path == "/internal/check":
             cond = query.get("condition", [""])[0]
             if cond == "true":

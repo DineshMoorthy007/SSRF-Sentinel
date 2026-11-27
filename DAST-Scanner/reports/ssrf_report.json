@@ -2,7 +2,7 @@
     "scan_information": {
         "project_name": "SSRF Sentinel",
         "target_url": "http://127.0.0.1:8080",
-        "scan_date": "2026-11-23 06:37:41 UTC",
+        "scan_date": "2026-11-27 06:57:24 UTC",
         "scan_status": "COMPLETED"
     },
     "scan_summary": {

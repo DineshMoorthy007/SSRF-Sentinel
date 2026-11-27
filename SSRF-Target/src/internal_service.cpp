@@ -91,3 +91,13 @@ std::string InternalService::getCheckFalse() {
   "evaluation": "MATCH_FALSE"
 })";
 }
+
+std::string InternalService::getRedirectNotice(const std::string& target) {
+    std::ostringstream ss;
+    ss << "{\n"
+       << "  \"redirect\": true,\n"
+       << "  \"target\": \"" << target << "\",\n"
+       << "  \"verification_marker\": \"SSRF_REDIRECT_DISPATCHED\"\n"
+       << "}";
+    return ss.str();
+}

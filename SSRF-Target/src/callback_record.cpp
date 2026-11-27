@@ -61,13 +61,19 @@ uint64_t CallbackStore::recordEvent(
     const std::string& source_ip
 ) {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    std::string effectiveToken = token.empty() ? "anonymous" : token;
+    size_t priorHits = token_hit_counts_[effectiveToken]++;
+    bool isDuplicate = (priorHits > 0);
+
     CallbackEvent ev;
     ev.id = next_id_++;
-    ev.token = token.empty() ? "anonymous" : token;
+    ev.token = effectiveToken;
     ev.timestamp = getCurrentIsoTimestamp();
     ev.method = method;
     ev.path = path;
     ev.source_ip = source_ip;
+    ev.is_duplicate = isDuplicate;
 
     events_.push_back(ev);
     return ev.id;
@@ -93,16 +99,20 @@ std::string CallbackStore::getEvidenceJson(const std::string& token) const {
     std::ostringstream ss;
 
     std::vector<const CallbackEvent*> matches;
+    std::set<std::string> uniqueTokensMatched;
+
     for (const auto& ev : events_) {
         if (token.empty() || ev.token == token) {
             matches.push_back(&ev);
+            uniqueTokensMatched.insert(ev.token);
         }
     }
 
     ss << "{\n";
     ss << "  \"service\": \"SSRF Callback Evidence Store\",\n";
     ss << "  \"filter_token\": \"" << escapeJson(token) << "\",\n";
-    ss << "  \"count\": " << matches.size() << ",\n";
+    ss << "  \"total_callbacks\": " << matches.size() << ",\n";
+    ss << "  \"unique_tokens\": " << uniqueTokensMatched.size() << ",\n";
     ss << "  \"callbacks\": [\n";
 
     for (size_t i = 0; i < matches.size(); ++i) {
@@ -113,7 +123,8 @@ std::string CallbackStore::getEvidenceJson(const std::string& token) const {
         ss << "      \"timestamp\": \"" << escapeJson(ev->timestamp) << "\",\n";
         ss << "      \"method\": \"" << escapeJson(ev->method) << "\",\n";
         ss << "      \"path\": \"" << escapeJson(ev->path) << "\",\n";
-        ss << "      \"source_ip\": \"" << escapeJson(ev->source_ip) << "\"\n";
+        ss << "      \"source_ip\": \"" << escapeJson(ev->source_ip) << "\",\n";
+        ss << "      \"is_duplicate\": " << (ev->is_duplicate ? "true" : "false") << "\n";
         ss << "    }" << (i + 1 < matches.size() ? "," : "") << "\n";
     }
 
@@ -137,10 +148,26 @@ size_t CallbackStore::count(const std::string& token) const {
     return cnt;
 }
 
+size_t CallbackStore::totalCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return events_.size();
+}
+
+size_t CallbackStore::uniqueTokenCount() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return token_hit_counts_.size();
+}
+
+bool CallbackStore::hasTokenReceived(const std::string& token) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = token_hit_counts_.find(token);
+    return (it != token_hit_counts_.end() && it->second > 0);
+}
+
 void CallbackStore::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     events_.clear();
     registered_tokens_.clear();
+    token_hit_counts_.clear();
     next_id_ = 1;
 }
-

@@ -24,6 +24,9 @@ public:
     // Boolean-Based SSRF endpoints
     static std::string getCheckTrue();
     static std::string getCheckFalse();
+
+    // Redirect SSRF helpers
+    static std::string getRedirectNotice(const std::string& target);
 };
 
 #endif // INTERNAL_SERVICE_H
