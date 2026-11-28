@@ -3,8 +3,8 @@
   "version": "2.1",
   "target": "http://127.0.0.1:8080",
   "scan_mode": "VULNERABLE",
-  "scan_date": "2026-11-27 10:23:49 UTC",
-  "scan_duration_seconds": 13.55,
+  "scan_date": "2026-11-28 07:32:09 UTC",
+  "scan_duration_seconds": 13.6,
   "scan_status": "COMPLETED",
   "summary": {
     "endpoints_discovered": 5,
@@ -23,8 +23,8 @@
     "/redirect"
   ],
   "parameters": [
-    "url",
-    "mode"
+    "mode",
+    "url"
   ],
   "vulnerabilities": [
     {
@@ -127,7 +127,7 @@
       "impact": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.",
       "why_it_matters": "Enables attackers to trigger unauthenticated internal API requests, interact with internal services, or interact with webhook endpoints.",
       "evidence": [
-        "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_7084a9bdcbfa5ffb' from IP 127.0.0.1 at 2026-11-27T10:23:40.760Z (Poll time: 0.002s)."
+        "Out-of-Band callback confirmed! Received 1 request(s) with token 'ssrf_tok_64f4fe14597da5c2' from IP 127.0.0.1 at 2026-11-28T07:32:01.235Z (Poll time: 0.001s)."
       ],
       "recommendation": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations.",
       "recommended_fix": "Enforce network egress filtering restricting the application from initiating connections to unauthorized ports and destinations."
@@ -145,7 +145,7 @@
       "impact": "Enables attackers to infer whether internal network ports or endpoints are open based on round-trip latency differentials.",
       "why_it_matters": "Enables attackers to infer whether internal network ports or endpoints are open based on round-trip latency differentials.",
       "evidence": [
-        "Fast probe median: 0.005s [0.005052399937994778, 0.0022222999250516295, 0.006371500086970627] | Delayed probe median: 2.017s [2.013288800022565, 2.020704000024125, 2.016581099946052] | Delta: 2.012s (Threshold: 1.200s)",
+        "Fast probe median: 0.021s [0.003137500025331974, 0.021433199988678098, 0.037982999929226935] | Delayed probe median: 2.031s [2.0171229999978095, 2.0308159000705928, 2.0332135000498965] | Delta: 2.009s (Threshold: 1.200s)",
         "Confirmed internal delayed execution marker 'SSRF_TIME_DELAYED_SUCCESS' in delayed response."
       ],
       "recommendation": "Configure strict connection and read timeouts (e.g. 2.0 seconds or less) on all server-side HTTP clients.",
