@@ -32,7 +32,7 @@ Desktop.ini
 
 !/SSRF-Target/build/ssrf_target.exe
 
-# SSRF Scanner test artifacts (never commit transient test HTML outputs)
+# SSRF Scanner test artifacts
 DAST-Scanner/tests/outputs/
 
 # Keep fixture JSONs but exclude any accidental HTML fixtures
